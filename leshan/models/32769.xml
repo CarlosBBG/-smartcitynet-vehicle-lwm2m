@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LWM2M xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="http://openmobilealliance.org/tech/profiles/LWM2M-v1_1.xsd">
+  <Object ObjectType="MODefinition">
+    <Name>SmartCityNet Vehicle Management</Name>
+    <Description1><![CDATA[
+      Modelo provisional para representar en Eclipse Leshan un nodo vehicular
+      conectado mediante el SmartCityNet LwM2M-LoRaWAN Bridge.
+    ]]></Description1>
+    <ObjectID>32769</ObjectID>
+    <ObjectURN>urn:oma:lwm2m:x:32769:1.0</ObjectURN>
+    <LWM2MVersion>1.1</LWM2MVersion>
+    <ObjectVersion>1.0</ObjectVersion>
+    <MultipleInstances>Single</MultipleInstances>
+    <Mandatory>Optional</Mandatory>
+    <Resources>
+      <Item ID="0">
+        <Name>Transmission Interval</Name>
+        <Operations>RW</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>15..86400</RangeEnumeration>
+        <Units>s</Units>
+        <Description><![CDATA[Intervalo entre uplinks del dispositivo.]]></Description>
+      </Item>
+      <Item ID="1">
+        <Name>Uplink Counter</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..4294967295</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Contador de uplinks de aplicación.]]></Description>
+      </Item>
+      <Item ID="2">
+        <Name>Battery Voltage</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..65534</RangeEnumeration>
+        <Units>mV</Units>
+        <Description><![CDATA[Tensión estimada de la batería.]]></Description>
+      </Item>
+      <Item ID="3">
+        <Name>Battery Level</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..100</RangeEnumeration>
+        <Units>%</Units>
+        <Description><![CDATA[Porcentaje estimado de batería.]]></Description>
+      </Item>
+      <Item ID="4">
+        <Name>Last Command Status</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..3</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[0 aplicado, 1 formato inválido, 2 no soportado, 3 fuera de rango.]]></Description>
+      </Item>
+      <Item ID="5">
+        <Name>Last Transaction ID</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..255</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Identificador del último comando administrativo.]]></Description>
+      </Item>
+      <Item ID="6">
+        <Name>RSSI</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units>dBm</Units>
+        <Description><![CDATA[RSSI del mejor gateway reportado por TTN.]]></Description>
+      </Item>
+      <Item ID="7">
+        <Name>SNR</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Float</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units>dB</Units>
+        <Description><![CDATA[SNR del mejor gateway reportado por TTN.]]></Description>
+      </Item>
+      <Item ID="8">
+        <Name>Last Seen</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>Time</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Hora del último uplink recibido por el Bridge.]]></Description>
+      </Item>
+      <Item ID="9">
+        <Name>Operation State</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>String</Type>
+        <RangeEnumeration>0..32</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Estado de la operación: requested, published, ttn_queued, ttn_sent, lorawan_acknowledged, acknowledged, rejected o failed.]]></Description>
+      </Item>
+      <Item ID="10">
+        <Name>DevEUI</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Mandatory</Mandatory>
+        <Type>String</Type>
+        <RangeEnumeration>16</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Identidad LoRaWAN asociada al endpoint LwM2M.]]></Description>
+      </Item>
+      <Item ID="11">
+        <Name>Remote Alert</Name>
+        <Operations>RW</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Activa la alarma intermitente y bloquea los motores del vehículo.]]></Description>
+      </Item>
+      <Item ID="12">
+        <Name>Movement</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>String</Type>
+        <RangeEnumeration>0..32</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Movimiento actual reportado por el vehículo.]]></Description>
+      </Item>
+      <Item ID="13">
+        <Name>Speed</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..100</RangeEnumeration>
+        <Units>%</Units>
+        <Description><![CDATA[Velocidad PWM aplicada expresada como porcentaje.]]></Description>
+      </Item>
+      <Item ID="14">
+        <Name>Front Distance</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..400</RangeEnumeration>
+        <Units>cm</Units>
+        <Description><![CDATA[Distancia medida por el HC-SR04 frontal.]]></Description>
+      </Item>
+      <Item ID="15">
+        <Name>Rear Distance</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..400</RangeEnumeration>
+        <Units>cm</Units>
+        <Description><![CDATA[Distancia medida por el HC-SR04 trasero.]]></Description>
+      </Item>
+      <Item ID="16">
+        <Name>Pitch</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Float</Type>
+        <RangeEnumeration>-180..180</RangeEnumeration>
+        <Units>deg</Units>
+        <Description><![CDATA[Ángulo Pitch calculado con el MPU6050.]]></Description>
+      </Item>
+      <Item ID="17">
+        <Name>Roll</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Float</Type>
+        <RangeEnumeration>-180..180</RangeEnumeration>
+        <Units>deg</Units>
+        <Description><![CDATA[Ángulo Roll calculado con el MPU6050.]]></Description>
+      </Item>
+      <Item ID="18">
+        <Name>Temperature</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Float</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units>Cel</Units>
+        <Description><![CDATA[Temperatura interna reportada por el MPU6050.]]></Description>
+      </Item>
+      <Item ID="19">
+        <Name>Actuator Flags</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..255</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Bits de luces, bocina, reversa, parqueo y alerta.]]></Description>
+      </Item>
+      <Item ID="20">
+        <Name>Event Flags</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Integer</Type>
+        <RangeEnumeration>0..255</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Bits de colisión, obstáculo, volcamiento, curvas, pendientes y alerta remota.]]></Description>
+      </Item>
+      <Item ID="21">
+        <Name>Event Summary</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>String</Type>
+        <RangeEnumeration>0..32</RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Evento activo de mayor prioridad.]]></Description>
+      </Item>
+      <Item ID="22">
+        <Name>MPU Available</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Indica si el MPU6050 respondió en el último muestreo.]]></Description>
+      </Item>
+      <Item ID="23">
+        <Name>Front Light</Name>
+        <Operations>RW</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Enciende o apaga la luz frontal del vehículo.]]></Description>
+      </Item>
+      <Item ID="24">
+        <Name>Rear Light</Name>
+        <Operations>RW</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Controla la luz trasera manual; el aviso de reversa conserva prioridad.]]></Description>
+      </Item>
+      <Item ID="25">
+        <Name>Parking Lights</Name>
+        <Operations>RW</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Activa o desactiva el parpadeo de las luces de parqueo.]]></Description>
+      </Item>
+    </Resources>
+    <Description2><![CDATA[
+      Object ID de desarrollo. Debe sustituirse por un rango reservado antes de
+      cualquier despliegue interoperable o público.
+    ]]></Description2>
+  </Object>
+</LWM2M>

@@ -1,0 +1,434 @@
+[
+  {
+    "id": "f100000000000001",
+    "type": "tab",
+    "label": "SmartCityNet Dashboard",
+    "disabled": false,
+    "info": "Dashboard del vehiculo Heltec administrado mediante Leshan."
+  },
+  {
+    "id": "b100000000000001",
+    "type": "ui-base",
+    "name": "SmartCityNet",
+    "path": "/dashboard",
+    "appIcon": "",
+    "includeClientData": true,
+    "acceptsClientConfig": [
+      "ui-notification",
+      "ui-control"
+    ],
+    "showPathInSidebar": false,
+    "headerContent": "page",
+    "navigationStyle": "none",
+    "titleBarStyle": "hidden",
+    "showReconnectNotification": true,
+    "notificationDisplayTime": 3,
+    "showDisconnectNotification": true,
+    "allowInstall": false
+  },
+  {
+    "id": "t100000000000001",
+    "type": "ui-theme",
+    "name": "SmartCityNet",
+    "colors": {
+      "surface": "#ffffff",
+      "primary": "#f27968",
+      "bgPage": "#dbe9e8",
+      "groupBg": "#dbe9e8",
+      "groupOutline": "#dbe9e8"
+    },
+    "sizes": {
+      "density": "default",
+      "pagePadding": "0px",
+      "groupGap": "0px",
+      "groupBorderRadius": "0px",
+      "widgetGap": "0px"
+    }
+  },
+  {
+    "id": "p100000000000001",
+    "type": "ui-page",
+    "name": "Vehículo Heltec",
+    "ui": "b100000000000001",
+    "path": "/vehiculo",
+    "icon": "directions_car",
+    "layout": "grid",
+    "theme": "t100000000000001",
+    "breakpoints": [
+      {
+        "name": "Default",
+        "px": 0,
+        "cols": 3
+      },
+      {
+        "name": "Tablet",
+        "px": 576,
+        "cols": 6
+      },
+      {
+        "name": "Small Desktop",
+        "px": 768,
+        "cols": 9
+      },
+      {
+        "name": "Desktop",
+        "px": 1024,
+        "cols": 12
+      }
+    ],
+    "order": 1,
+    "className": "",
+    "visible": "true",
+    "disabled": "false"
+  },
+  {
+    "id": "g100000000000001",
+    "type": "ui-group",
+    "name": "Panel de administración",
+    "page": "p100000000000001",
+    "width": 12,
+    "height": 1,
+    "order": 1,
+    "showTitle": false,
+    "className": "",
+    "visible": true,
+    "disabled": false,
+    "groupType": "default"
+  },
+  {
+    "id": "i100000000000001",
+    "type": "inject",
+    "z": "f100000000000001",
+    "name": "Actualizar cada 2 segundos",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "2",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 0.5,
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "fn10000000000001",
+        "fn10000000000002"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000001",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Consultar dispositivos",
+    "func": "msg.method = 'GET';\nmsg.url = (env.get('BRIDGE_URL') || 'http://127.0.0.1:8081') + '/devices';\ndelete msg.payload;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 80,
+    "wires": [
+      [
+        "http1000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "http1000000000001",
+    "type": "http request",
+    "z": "f100000000000001",
+    "name": "GET Bridge /devices",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 650,
+    "y": 80,
+    "wires": [
+      [
+        "fn10000000000003"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000002",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Consultar operaciones",
+    "func": "msg.method = 'GET';\nmsg.url = (env.get('BRIDGE_URL') || 'http://127.0.0.1:8081') + '/operations';\ndelete msg.payload;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 140,
+    "wires": [
+      [
+        "http1000000000002"
+      ]
+    ]
+  },
+  {
+    "id": "http1000000000002",
+    "type": "http request",
+    "z": "f100000000000001",
+    "name": "GET Bridge /operations",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 660,
+    "y": 140,
+    "wires": [
+      [
+        "fn10000000000004"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000003",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Guardar telemetría",
+    "func": "const id = env.get('DEVICE_ID') || 'heltec-labredes';\nconst devices = Array.isArray(msg.payload) ? msg.payload : [];\nconst device = devices.find(item => item.device_id === id) || null;\nflow.set('dashboardDevice', device);\nmsg.topic = 'state';\nmsg.payload = { device, operation: flow.get('dashboardOperation') || null };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 900,
+    "y": 80,
+    "wires": [
+      [
+        "ui10000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000004",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Guardar última operación",
+    "func": "const id = env.get('DEVICE_ID') || 'heltec-labredes';\nconst operations = Array.isArray(msg.payload) ? msg.payload : [];\nconst operation = operations.find(item => item.device_id === id) || null;\nflow.set('dashboardOperation', operation);\nmsg.topic = 'state';\nmsg.payload = { device: flow.get('dashboardDevice') || null, operation };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 910,
+    "y": 140,
+    "wires": [
+      [
+        "ui10000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "i100000000000002",
+    "type": "inject",
+    "z": "f100000000000001",
+    "name": "Cargar vista al iniciar",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 0.2,
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 220,
+    "wires": [
+      [
+        "fn10000000000005"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000005",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Ruta de la vista",
+    "func": "msg.filename = env.get('DASHBOARD_TEMPLATE');\nif (!msg.filename) { node.error('Falta DASHBOARD_TEMPLATE', msg); return null; }\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 220,
+    "wires": [
+      [
+        "file1000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "file1000000000001",
+    "type": "file in",
+    "z": "f100000000000001",
+    "name": "Leer dashboard.vue",
+    "filename": "filename",
+    "filenameType": "msg",
+    "format": "utf8",
+    "chunk": false,
+    "sendError": false,
+    "encoding": "none",
+    "allProps": false,
+    "x": 610,
+    "y": 220,
+    "wires": [
+      [
+        "fn10000000000006"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000006",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Aplicar vista",
+    "func": "msg.ui_update = { format: msg.payload };\nmsg.topic = 'template';\nmsg.payload = null;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 220,
+    "wires": [
+      [
+        "ui10000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "ui10000000000001",
+    "type": "ui-template",
+    "z": "f100000000000001",
+    "group": "g100000000000001",
+    "page": "",
+    "ui": "",
+    "name": "Dashboard del vehículo",
+    "order": 1,
+    "width": 12,
+    "height": 0,
+    "head": "",
+    "format": "<template><div style=\"padding:24px\">Cargando dashboard SmartCityNet…</div></template>",
+    "storeOutMessages": true,
+    "passthru": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 1140,
+    "y": 160,
+    "wires": [
+      [
+        "fn10000000000007"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000007",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Preparar escritura Leshan",
+    "func": "const endpoint = env.get('LESHAN_ENDPOINT') || 'smartcitynet-heltec-labredes';\nconst base = env.get('LESHAN_URL') || 'http://127.0.0.1:8080';\nconst action = msg.action;\nconst lightResources = { 'light-front': 23, 'light-rear': 24, 'light-parking': 25 };\nlet resource;\nlet type;\nlet value;\nif (action === 'alert') {\n  resource = 11; type = 'BOOLEAN'; value = msg.payload === true;\n} else if (action === 'interval') {\n  value = Number(msg.payload);\n  if (!Number.isInteger(value) || value < 15 || value > 86400) {\n    msg.topic = 'feedback';\n    msg.payload = { ok: false, action, text: 'Intervalo inválido: use un entero entre 15 y 86400 segundos.' };\n    return [null, msg];\n  }\n  resource = 0; type = 'INTEGER'; value = String(value);\n} else if (Object.hasOwn(lightResources, action)) {\n  resource = lightResources[action]; type = 'BOOLEAN'; value = msg.payload === true;\n} else {\n  return [null, null];\n}\nmsg.commandAction = action;\nmsg.method = 'PUT';\nmsg.url = `${base}/api/clients/${encodeURIComponent(endpoint)}/32769/0/${resource}`;\nmsg.headers = { 'Content-Type': 'application/json' };\nmsg.payload = { kind: 'singleResource', id: resource, type, value };\nreturn [msg, null];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1410,
+    "y": 160,
+    "wires": [
+      [
+        "http1000000000003"
+      ],
+      [
+        "ui10000000000001"
+      ]
+    ]
+  },
+  {
+    "id": "http1000000000003",
+    "type": "http request",
+    "z": "f100000000000001",
+    "name": "PUT recurso LwM2M",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 1660,
+    "y": 140,
+    "wires": [
+      [
+        "fn10000000000008"
+      ]
+    ]
+  },
+  {
+    "id": "fn10000000000008",
+    "type": "function",
+    "z": "f100000000000001",
+    "name": "Resultado de Leshan",
+    "func": "const code = Number(msg.statusCode);\nconst body = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};\nconst httpOk = code >= 200 && code < 300;\nconst ok = httpOk && body.success === true && body.failure !== true;\nconst labels = {\n  alert: 'alerta remota',\n  interval: 'intervalo de transmisión',\n  'light-front': 'luz frontal',\n  'light-rear': 'luz trasera',\n  'light-parking': 'luces de parqueo'\n};\nconst command = labels[msg.commandAction] || 'recurso';\nconst result = body.status || msg.statusCode || 'sin respuesta';\nmsg.topic = 'feedback';\nmsg.payload = {\n  ok,\n  action: msg.commandAction,\n  text: ok\n    ? `Leshan aceptó la escritura de ${command}. Esperando confirmación de la Heltec…`\n    : `Leshan rechazó la escritura de ${command} (${result}).`\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1880,
+    "y": 140,
+    "wires": [
+      [
+        "ui10000000000001"
+      ]
+    ]
+  }
+]

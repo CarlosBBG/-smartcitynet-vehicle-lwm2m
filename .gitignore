@@ -1,0 +1,12 @@
+**/credentials.h
+HELTEC.txt
+bridge/.env
+bridge/.venv/
+bridge/data/
+bridge/*.db
+**/__pycache__/
+*.egg-info/
+*.pyc
+leshan/.runtime/
+leshan/virtual-client/target/
+firmware-backups/
