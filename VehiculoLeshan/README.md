@@ -6,17 +6,29 @@ HC-SR04, el MPU6050, el L298N y la detección local de eventos. Añade telemetr�
 vehicular, el recurso LwM2M **Remote Alert** y el control remoto de luces dentro
 del objeto `32769`.
 
+## Organización del código
+
+`VehiculoLeshan.ino` agrupa pines, estado del vehículo, sensores, motores,
+Bluetooth y comunicación. `setup()` inicia el hardware; `loop()` actualiza
+las tareas y llama a `actualizarLoRa()` cuando TTN está habilitado.
+
+`velocidad` es la solicitada y `velocidadActual` la aplicada, ambas de 0 a 255.
+Las distancias están en centímetros, los ángulos en grados y los tiempos en
+milisegundos. `luzTrasera` guarda la orden manual; `faseLuzReversa` controla
+su parpadeo automático. Los nombres exigidos por Heltec, como
+`appTxDutyCycle` y `downLinkDataHandle`, se mantienen.
+
 ## Modo LoRaWAN
 
-El sketch está configurado con `HABILITAR_TTN=1`. Inicializa la radio, intenta
-unirse por OTAA y transmite uplinks por FPort 10; los comandos administrativos
+El sketch está configurado con `const bool usarTTN = true;`. Inicializa la
+radio, intenta unirse por OTAA y transmite uplinks por FPort 10; los comandos administrativos
 se reciben por FPort 11. Los sensores, motores, luces, buzzer, OLED y control
 Bluetooth continúan activos.
 
 Para probar únicamente el vehículo sin radio, cambie temporalmente esta línea:
 
 ```cpp
-#define HABILITAR_TTN 0
+const bool usarTTN = false;
 ```
 
 El monitor serie USB, a 115200 baudios, muestra cada segundo las distancias,
@@ -28,8 +40,10 @@ disponible.
 Una alerta remota persistida se ignora temporalmente en memoria para que no
 bloquee los motores durante estas pruebas; el valor guardado no se borra.
 
-Con `HABILITAR_TTN=1` se necesita `credentials.h` con las claves OTAA de la
-placa. No suba ese archivo al repositorio.
+El archivo `VehiculoLeshan/credentials.h` se necesita para compilar ambos
+modos. Si no existe, cópielo desde `credentials.example.h`: para la prueba
+local puede dejar sus valores en cero. Para TTN debe configurar las claves
+OTAA de la placa. No suba `credentials.h` al repositorio.
 
 Cuando Remote Alert está activo:
 
@@ -113,9 +127,8 @@ cd /ruta/al/repositorio
 cp VehiculoLeshan/credentials.example.h VehiculoLeshan/credentials.h
 ```
 
-Edite `credentials.h` con DevEUI, JoinEUI y AppKey únicos. Si no existe ese
-archivo, el sketch usa temporalmente `../EnvioDatos/credentials.h` para permitir
-la compilación, pero no debe cargarlo en una segunda placa con el mismo DevEUI.
+Edite `credentials.h` con DevEUI, JoinEUI y AppKey únicos. El sketch usa
+solamente este archivo; no toma las credenciales del ejemplo `EnvioDatos`.
 
 ```bash
 arduino-cli compile \
@@ -156,10 +169,17 @@ El comportamiento se obtuvo del binario recuperado de la Heltec del TIC:
 - las luces de parqueo cambian de fase cada 300 ms y el buzzer se trata como el
   actuador activo HIGH/LOW instalado en el vehículo.
 
-La protección local también coincide con el TIC: una colisión frontal o un
-volcamiento reduce el PWM en pasos de 20 cada 40 ms hasta detenerse; un
-obstáculo frontal de 30 a 99 cm limita el avance recto a PWM 100. El HC-SR04
-trasero se usa para el aviso sonoro y no impide la reversa.
+La protección local utiliza ambos HC-SR04. Entre 30 y 99 cm, el vehículo limita
+la velocidad a PWM 100 cuando se acerca al objeto. Por debajo de 30 cm, el
+sensor delantero bloquea el avance y el trasero bloquea la reversa. El bloqueo
+solo afecta la dirección peligrosa: siempre se puede retroceder ante un objeto
+delantero, avanzar ante uno trasero o girar sobre el eje hacia ambos lados. El
+volcamiento continúa frenando todas las direcciones.
+
+Al activar las luces de parqueo, esos límites se reducen para realizar
+maniobras próximas: la velocidad se limita entre 11 y 39 cm y el movimiento se
+detiene a 10 cm o menos. El límite reducido se aplica tanto al sensor delantero
+como al trasero y únicamente en la dirección hacia el objeto.
 
 Para una primera prueba, levante las ruedas, envíe `3` para limitar el PWM a
 75, y pruebe individualmente `F`, `S`, `B`, `S`, `L`, `S`, `R`, `S`. Después

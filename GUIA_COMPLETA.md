@@ -201,9 +201,10 @@ arduino-cli upload --port /dev/ttyUSB0 \
 arduino-cli monitor --port /dev/ttyUSB0 --config baudrate=115200
 ```
 
-El sketch usa `HABILITAR_TTN=1`. Para probar temporalmente sensores, luces y
-motores sin gateway, cambie esta constante a `0`; restáurela antes de validar la
-integración completa.
+El sketch usa `const bool usarTTN = true;`. Para probar temporalmente sensores,
+luces y motores sin gateway, cambie `true` por `false`; restáurelo antes de
+validar la integración completa. Ambos modos necesitan `credentials.h`; en
+modo local puede utilizar los valores en cero de `credentials.example.h`.
 
 ### 6.2 Comprobaciones de hardware
 
@@ -211,6 +212,11 @@ integración completa.
 - TTN debe registrar uplinks por `FPort 10`.
 - El monitor serie debe mostrar distancias, MPU, movimiento, velocidad y
   evento.
+- Con un objeto a menos de 30 cm, el sensor frontal debe impedir únicamente el
+  avance y el trasero únicamente la reversa. Los giros sobre el eje y el
+  movimiento en sentido contrario deben continuar disponibles.
+- Al activar las luces de parqueo, el vehículo debe limitar la velocidad entre
+  11 y 39 cm y detenerse a 10 cm o menos en la dirección del objeto.
 - Si el MPU6050 está montado verticalmente, deje el vehículo quieto durante el
   segundo inicial de calibración.
 - Los Echo de los HC-SR04 requieren adaptación de 5 V a 3,3 V.
