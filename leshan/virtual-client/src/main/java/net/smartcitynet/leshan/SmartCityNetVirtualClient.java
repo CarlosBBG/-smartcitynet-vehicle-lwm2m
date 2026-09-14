@@ -129,6 +129,7 @@ public final class SmartCityNetVirtualClient {
             String operationState,
             String devEui,
             boolean remoteAlert,
+            boolean localPanic,
             String movement,
             long speed,
             long frontDistance,
@@ -199,6 +200,7 @@ public final class SmartCityNetVirtualClient {
                     operationState,
                     device.path("dev_eui").asText(),
                     state.path("remote_alert_active").asBoolean(false),
+                    state.path("local_panic_active").asBoolean(false),
                     state.path("movement_name").asText("unknown"),
                     state.path("speed_percent").asLong(),
                     state.path("front_distance_cm").asLong(),
@@ -352,6 +354,7 @@ public final class SmartCityNetVirtualClient {
                 case 31 -> ReadResponse.success(resourceId, value.dhtAvailable());
                 case 32 -> ReadResponse.success(resourceId, value.leftIndicator());
                 case 33 -> ReadResponse.success(resourceId, value.rightIndicator());
+                case 34 -> ReadResponse.success(resourceId, value.localPanic());
                 default -> super.read(server, resourceId);
             };
         }
@@ -455,6 +458,7 @@ public final class SmartCityNetVirtualClient {
                 notifyIfChanged(31, previous.dhtAvailable(), updated.dhtAvailable());
                 notifyIfChanged(32, previous.leftIndicator(), updated.leftIndicator());
                 notifyIfChanged(33, previous.rightIndicator(), updated.rightIndicator());
+                notifyIfChanged(34, previous.localPanic(), updated.localPanic());
             } catch (Exception error) {
                 System.err.println("No se pudo actualizar el device twin: " + error.getMessage());
             }

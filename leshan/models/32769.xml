@@ -354,6 +354,16 @@
         <Units></Units>
         <Description><![CDATA[Activa o desactiva la direccional derecha del vehículo.]]></Description>
       </Item>
+      <Item ID="34">
+        <Name>Local Panic</Name>
+        <Operations>R</Operations>
+        <MultipleInstances>Single</MultipleInstances>
+        <Mandatory>Optional</Mandatory>
+        <Type>Boolean</Type>
+        <RangeEnumeration></RangeEnumeration>
+        <Units></Units>
+        <Description><![CDATA[Indica que el botón físico de pánico está enclavado y los motores permanecen bloqueados.]]></Description>
+      </Item>
     </Resources>
     <Description2><![CDATA[
       Object ID de desarrollo. Debe sustituirse por un rango reservado antes de
