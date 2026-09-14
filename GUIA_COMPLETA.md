@@ -219,7 +219,8 @@ modo local puede utilizar los valores en cero de `credentials.example.h`.
   y Node-RED.
 - El GY-GPS6MV2 trabaja a 9600 baudios: TX del GPS va a GPIO34 y su entrada RX
   queda sin conectar. GPIO35 permanece libre para no activar el LED integrado.
-- Una pulsación del botón en GPIO36 debe detener y bloquear los motores; una
+- Una pulsación del botón en GPIO47 debe detener y bloquear los motores,
+  programar un uplink prioritario y mostrar la alerta en Leshan y Node-RED; una
   segunda pulsación debe liberar el bloqueo sin reanudar el movimiento.
 - Con un objeto a menos de 30 cm, el sensor frontal debe impedir únicamente el
   avance y el trasero únicamente la reversa. Los giros sobre el eje y el
@@ -383,6 +384,7 @@ mismo endpoint.
 | `/32769/0/31` | DHT Available | R | Heltec |
 | `/32769/0/32` | Left Turn Indicator | RW | Heltec/Bridge |
 | `/32769/0/33` | Right Turn Indicator | RW | Heltec/Bridge |
+| `/32769/0/34` | Local Panic | R | Heltec |
 
 El ID `32769` es provisional para laboratorio; no representa una asignación
 oficial de OMNA para un producto interoperable.
