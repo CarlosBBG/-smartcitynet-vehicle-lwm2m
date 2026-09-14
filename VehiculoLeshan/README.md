@@ -1,8 +1,8 @@
 # Vehículo ADAS administrado desde Leshan
 
 Este sketch integra el prototipo descrito en `TIC - Jessica Bracero_Final.pdf`
-con SmartCityNet, TTN y Eclipse Leshan. Conserva el control Bluetooth, los dos
-HC-SR04, el MPU6050, el L298N y la detección local de eventos. Añade telemetría
+con SmartCityNet, TTN y Eclipse Leshan. Incluye control Bluetooth, dos HC-SR04,
+MPU6050, DHT11, GPS GY-GPS6MV2, botón de pánico, L298N y detección local de eventos. Añade telemetría
 vehicular, el recurso LwM2M **Remote Alert** y el control remoto de luces dentro
 del objeto `32769`.
 
@@ -62,8 +62,7 @@ comando Bluetooth para volver a moverse.
 
 ## Conexiones
 
-Los pines siguientes fueron corroborados directamente en el firmware original
-del vehículo:
+La nueva distribución corresponde al esquema `DistribucionPines`:
 
 | Componente | Señal | GPIO |
 |---|---|---:|
@@ -73,26 +72,36 @@ del vehículo:
 | L298N | IN4 | 3 |
 | L298N | ENA | 7 |
 | L298N | ENB | 2 |
-| HC-SR04 frontal | Trigger | 39 |
-| HC-SR04 frontal | Echo | 40 |
-| HC-SR04 trasero | Trigger | 47 |
-| HC-SR04 trasero | Echo | 48 |
+| HC-SR04 frontal | Trigger | 46 |
+| HC-SR04 frontal | Echo | 45 |
+| HC-SR04 trasero | Trigger | 26 |
+| HC-SR04 trasero | Echo | 21 |
 | MPU6050 | SDA | 41 |
 | MPU6050 | SCL | 42 |
-| Buzzer | señal | 34 |
-| Luz frontal | señal | 45 |
-| Luz trasera | señal | 46 |
-| Luz de parqueo | señal | 1 |
+| Buzzer | señal | 48 |
+| Luces frontales | señal común | 39 |
+| Luces traseras | señal común | 40 |
+| Direccional/parqueo izquierdo | señal | 1 |
+| Direccional/parqueo derecho | señal | 38 |
+| DHT11 | datos | 33 |
+| Botón de pánico | entrada a GND | 36 |
 | HC-06 | TX del HC-06 → RX Heltec | 19 |
 | HC-06 | RX del HC-06 ← TX Heltec | 20 |
+| GY-GPS6MV2 | TX del GPS → RX Heltec | 34 |
+| GY-GPS6MV2 | RX del GPS | Sin conectar |
 
 GPIO19/20 utilizan UART1 y dejan GPIO43/44 exclusivamente para el monitor USB.
+El GPS utiliza UART2 a 9600 baudios únicamente para recepción en GPIO34.
+GPIO35 queda libre porque también gobierna el LED blanco incorporado.
 El OLED usa su bus integrado en GPIO17/18; el MPU6050 utiliza un segundo bus
 I2C para evitar el conflicto.
 
-GPIO2–GPIO7 controlan el L298N y no corresponden a un RC522. GPIO19/20
-corresponden al HC-06 del montaje original, no a un tercer HC-SR04. El firmware
-original utiliza solamente los sensores ultrasónicos frontal y trasero.
+La posición GPS y la medición ambiental se muestran en una vista alternada del
+OLED. Latitud, longitud, temperatura ambiente, humedad y sus indicadores de
+validez también se envían por LoRaWAN para mostrarse en Leshan y Node-RED.
+El botón de pánico se conecta entre GPIO36 y GND usando la resistencia pull-up
+interna: una pulsación bloquea motores y activa el buzzer; la siguiente lo
+libera, pero no reanuda el movimiento anterior.
 
 GPIO1 también es la entrada ADC de batería de la Heltec V3. Como la PCB del TIC
 lo utiliza para la luz de parqueo, el sketch no intenta medir la batería y
@@ -112,7 +121,9 @@ detengan los motores.
 ### Precauciones eléctricas
 
 - Las entradas del ESP32-S3 son de 3,3 V. Los Echo del HC-SR04 pueden entregar
-  5 V: use un divisor resistivo o conversor de nivel antes de GPIO40 y GPIO48.
+  5 V: use un divisor resistivo o conversor de nivel antes de GPIO45 y GPIO21.
+- Conecte DATA del DHT11 a GPIO33. Si usa el sensor sin placa auxiliar, añada
+  una resistencia pull-up de 4,7–10 kΩ entre DATA y 3,3 V.
 - Retire los jumpers ENA/ENB del L298N para controlar velocidad por PWM.
 - Use una alimentación separada para los motores y una para lógica/sensores.
 - Una todas las tierras en una referencia GND común.
@@ -151,6 +162,11 @@ arduino-cli upload \
 | `R` | derecha | `X/x` | parqueo ON/OFF |
 | `S` | detener | `D` | detener movimiento |
 | `I/J/G/H` | movimientos diagonales | `0`–`9`, `q/Q` | velocidad |
+| `Z/z` | direccional izquierda ON/OFF | `C/c` | direccional derecha ON/OFF |
+
+Los comandos de intermitentes quedan ordenados como `Z`, `X`, `C`: izquierda,
+parqueo y derecha. Activar parqueo apaga las direccionales individuales;
+activar una direccional apaga parqueo y la direccional opuesta.
 
 El comportamiento se obtuvo del binario recuperado de la Heltec del TIC:
 
@@ -166,8 +182,8 @@ El comportamiento se obtuvo del binario recuperado de la Heltec del TIC:
 - al retroceder la luz trasera parpadea cada 300 ms. El buzzer queda continuo
   a 10 cm o menos, pulsa cada vez más lento entre 11 y 80 cm y se apaga por
   encima de 80 cm o cuando el sensor reporta fuera de rango;
-- las luces de parqueo cambian de fase cada 300 ms y el buzzer se trata como el
-  actuador activo HIGH/LOW instalado en el vehículo.
+- las luces de parqueo y las direccionales cambian de fase cada 300 ms; el
+  buzzer se trata como el actuador activo HIGH/LOW instalado en el vehículo.
 
 La protección local utiliza ambos HC-SR04. Entre 30 y 99 cm, el vehículo limita
 la velocidad a PWM 100 cuando se acerca al objeto. Por debajo de 30 cm, el
@@ -189,7 +205,7 @@ rechazan aunque el Bluetooth continúe conectado.
 
 ## Telemetría
 
-El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 27 bytes. Incluye:
+El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 41 bytes. Incluye:
 
 - movimiento y velocidad;
 - distancias frontal y trasera;
@@ -198,9 +214,14 @@ El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 27 bytes. Incluye:
 - contador y checksum XOR del bloque TIC;
 - intervalo administrativo y batería;
 - último txId/estado, alerta remota y disponibilidad del MPU6050.
+- latitud y longitud escaladas a `10^7`, indicador de posición válida y un
+  checksum específico para el bloque GPS.
+- temperatura ambiente y humedad relativa en décimas, disponibilidad del DHT11
+  y un checksum específico para el bloque ambiental.
 
-El Bridge sigue aceptando el formato anterior `0x01`, por lo que el Heltec de
-laboratorio y el vehículo pueden coexistir en la misma aplicación TTN.
+El Bridge sigue aceptando las tramas vehiculares anteriores de 27 y 36 bytes y
+el formato administrativo `0x01`, por lo que distintas revisiones pueden
+coexistir en la misma aplicación TTN.
 
 Después de aplicar una escritura administrativa, el firmware sustituye el
 temporizador normal y programa el primer ACK aproximadamente tres segundos
@@ -209,8 +230,9 @@ Las repeticiones son idempotentes en el Bridge y reducen la posibilidad de que
 una pérdida de uplink deje el actuador aplicado pero sin confirmar en Leshan.
 
 Los bits de actuadores informan por separado el estado solicitado de la luz
-frontal, la luz trasera manual y las luces de parqueo. La señal automática de
-reversa mantiene prioridad sobre la luz trasera manual por seguridad.
+frontal, la luz trasera manual, parqueo y las dos direccionales. La señal
+automática de reversa mantiene prioridad sobre la luz trasera manual por
+seguridad.
 
 ## Iniciar el cliente LwM2M del vehículo
 
@@ -274,7 +296,7 @@ cambia la operación a `acknowledged` y `/32769/0/11` refleja el valor nuevo.
 
 ## Controlar las luces desde Leshan
 
-El objeto `32769`, instancia `0`, expone tres recursos booleanos RW para las
+El objeto `32769`, instancia `0`, expone cinco recursos booleanos RW para las
 luces en la misma pestaña **SmartCityNet Vehicle Management v1.0**:
 
 | Recurso | Luz |
@@ -282,6 +304,24 @@ luces en la misma pestaña **SmartCityNet Vehicle Management v1.0**:
 | `/32769/0/23` | frontal |
 | `/32769/0/24` | trasera manual |
 | `/32769/0/25` | parqueo |
+| `/32769/0/32` | direccional izquierda |
+| `/32769/0/33` | direccional derecha |
+
+La ubicación aparece en el mismo objeto mediante recursos de solo lectura:
+
+| Ruta | Dato GPS |
+|---|---|
+| `/32769/0/26` | latitud |
+| `/32769/0/27` | longitud |
+| `/32769/0/28` | posición disponible |
+
+Las mediciones del DHT11 se publican como recursos de solo lectura:
+
+| Ruta | Dato ambiental |
+|---|---|
+| `/32769/0/29` | temperatura ambiente |
+| `/32769/0/30` | humedad relativa |
+| `/32769/0/31` | lectura DHT11 disponible |
 
 Para encender la luz frontal desde la API de Leshan:
 
@@ -293,7 +333,7 @@ curl -s -X PUT \
   | python3 -m json.tool
 ```
 
-Use `false` para apagarla o cambie el último identificador de recurso a `24` o
-`25` para controlar la luz trasera o las luces de parqueo. La escritura necesita
-que el nodo esté unido a TTN; si la radio está desactivada o no hay gateway
-disponible, el comando queda pendiente hasta el siguiente uplink.
+Use `false` para apagarla. Cambie el recurso a `24`, `25`, `32` o `33` para la
+luz trasera, parqueo, direccional izquierda o direccional derecha. La escritura
+necesita que el nodo esté unido a TTN; si la radio está desactivada o no hay
+gateway disponible, el comando queda pendiente hasta el siguiente uplink.

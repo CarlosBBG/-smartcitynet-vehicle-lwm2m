@@ -4,8 +4,8 @@
  * Hardware de referencia: Heltec WiFi LoRa 32 V3
  * Modo predeterminado: conexion a TTN por LoRaWAN Clase A.
  *
- * Conserva los sensores, pines y movimientos documentados en
- * "TIC - Jessica Bracero_Final.pdf" y añade un bloqueo remoto:
+ * Conserva los movimientos documentados en "TIC - Jessica Bracero_Final.pdf"
+ * y utiliza la distribucion de pines de la nueva PCB. Añade un bloqueo remoto:
  * al activar Remote Alert desde Leshan, detiene los motores, ignora todos los
  * comandos de movimiento Bluetooth y hace sonar una alarma intermitente.
  * Desactivar la alerta no reanuda el movimiento anterior: hace falta un nuevo
@@ -15,17 +15,23 @@
 #include "LoRaWan_APP.h"
 #include "HT_SSD1306Wire.h"
 #include <HardwareSerial.h>
+#include "DHT.h"
 #include <Preferences.h>
 #include <Wire.h>
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #include "credentials.h"
 
 // true: conexion a TTN. false: prueba local por USB y Bluetooth, sin radio.
 const bool usarTTN = true;
 
+// Tipo de DHT
+#define DHTTYPE DHT11
+
 
 /* =========================================================
-   PINES RECUPERADOS DEL FIRMWARE ORIGINAL DEL TIC
+   DISTRIBUCION DE PINES DE LA NUEVA PCB
    ========================================================= */
 
 // Puente H L298N.
@@ -37,10 +43,10 @@ const uint8_t PIN_ENA = 7;
 const uint8_t PIN_ENB = 2;
 
 // HC-SR04 frontal y trasero.
-const uint8_t PIN_TRIG_FRONTAL = 39;
-const uint8_t PIN_ECHO_FRONTAL = 40;
-const uint8_t PIN_TRIG_TRASERO = 47;
-const uint8_t PIN_ECHO_TRASERO = 48;
+const uint8_t PIN_TRIG_FRONTAL = 46;
+const uint8_t PIN_ECHO_FRONTAL = 45;
+const uint8_t PIN_TRIG_TRASERO = 26;
+const uint8_t PIN_ECHO_TRASERO = 21;
 
 // MPU6050 en un bus I2C distinto al OLED integrado.
 const uint8_t PIN_MPU_SDA = 41;
@@ -48,17 +54,24 @@ const uint8_t PIN_MPU_SCL = 42;
 
 
 /* =========================================================
-   LUCES, BUZZER Y BLUETOOTH DEL FIRMWARE ORIGINAL
+   ACTUADORES, BOTON Y PUERTOS SERIE
    ========================================================= */
 
-const uint8_t PIN_BUZZER = 34;
-const uint8_t PIN_LUZ_FRONTAL = 45;
-const uint8_t PIN_LUZ_TRASERA = 46;
-const uint8_t PIN_LUZ_PARQUEO = 1;
+const uint8_t PIN_BUZZER = 48;
+const uint8_t PIN_LUZ_FRONTAL = 39;
+const uint8_t PIN_LUZ_TRASERA = 40;
+const uint8_t PIN_PARQUEO_IZQUIERDO = 1;
+const uint8_t PIN_PARQUEO_DERECHO = 38;
+
+const uint8_t PIN_DHT11 = 33;
+const uint8_t PIN_BOTON_PANICO = 36;
 
 // UART1 para HC-06. Conectar HC-06 TX -> GPIO19 y HC-06 RX -> GPIO20.
 const uint8_t PIN_BT_RX = 19;
 const uint8_t PIN_BT_TX = 20;
+
+// UART2 para GY-GPS6MV2 en modo de solo lectura.
+const uint8_t PIN_GPS_RX = 34; // GPS TX -> Heltec GPIO34.
 
 
 /* =========================================================
@@ -94,6 +107,7 @@ SSD1306Wire pantalla(
 
 TwoWire busMpu(1);
 HardwareSerial bluetooth(1);
+HardwareSerial gps(2);
 
 
 /* =========================================================
@@ -130,12 +144,13 @@ uint8_t confirmedNbTrials = 4;
 
    Uplink FPort 10:
      tipo 0x02: ACK administrativo existente (8 bytes)
-     tipo 0x03: telemetria vehicular (27 bytes)
+     tipo 0x03: telemetria vehicular con GPS y DHT11 (41 bytes)
 
    Downlink FPort 11:
      01 10 txId intervalo_s(4)  -> cambiar intervalo
      01 11 txId estado          -> alerta remota, 0=OFF, 1=ON
-     01 12 txId luz estado      -> luz 0=frontal, 1=trasera, 2=parqueo
+     01 12 txId luz estado      -> luz 0=frontal, 1=trasera, 2=parqueo,
+                                    3=direccional izquierda, 4=derecha
    ========================================================= */
 
 const uint8_t VERSION_PROTOCOLO = 0x01;
@@ -149,6 +164,8 @@ const uint8_t PUERTO_COMANDOS = 11;
 const uint8_t LUZ_FRONTAL = 0;
 const uint8_t LUZ_TRASERA = 1;
 const uint8_t LUZ_PARQUEO = 2;
+const uint8_t LUZ_DIRECCIONAL_IZQUIERDA = 3;
+const uint8_t LUZ_DIRECCIONAL_DERECHA = 4;
 
 const uint32_t INTERVALO_INICIAL = 30;
 const uint32_t INTERVALO_MINIMO = 15;
@@ -168,6 +185,8 @@ volatile bool guardarPendiente = false;
 volatile bool alertaRemota = false;
 volatile uint8_t ultimaTransaccion = 0;
 volatile uint8_t ultimoEstadoComando = CMD_OK;
+
+DHT dht(PIN_DHT11, DHTTYPE);
 
 
 /* =========================================================
@@ -235,10 +254,24 @@ bool bajada = false;
 bool luzFrontal = false;
 bool luzTrasera = false;
 bool lucesParqueo = false;
+bool direccionalIzquierda = false;
+bool direccionalDerecha = false;
 bool bocina = false;
+bool panicoActivo = false;
+
+// Mediciones ambientales y posicion que también viajan por telemetria.
+float temperaturaAmbiente = 0.0f;
+float humedadAmbiente = 0.0f;
+bool dhtDisponible = false;
+
+double latitudGps = 0.0;
+double longitudGps = 0.0;
+bool gpsConPosicion = false;
+char lineaGps[100] = {0};
+uint8_t posicionLineaGps = 0;
 
 // Fases instantaneas de parpadeo y salida fisica del buzzer.
-bool faseParqueo = false;
+bool faseIntermitentes = false;
 bool faseAlarma = false;
 bool faseAvisoReversa = false;
 bool faseLuzReversa = false;
@@ -249,12 +282,17 @@ uint32_t contadorEnvios = 0;
 // Marcas de millis() para ejecutar cada tarea sin bloquear el resto.
 uint32_t ultimoSensor = 0;
 uint32_t ultimoMotor = 0;
-uint32_t ultimoParqueo = 0;
+uint32_t ultimoIntermitente = 0;
 uint32_t ultimaAlarma = 0;
 uint32_t ultimoAvisoReversa = 0;
 uint32_t ultimaLuzReversa = 0;
 uint32_t ultimoOLED = 0;
 uint32_t ultimoDiagnostico = 0;
+uint32_t ultimoDht = 0;
+uint32_t ultimaPosicionGps = 0;
+uint32_t ultimoCambioPanico = 0;
+bool ultimaLecturaPanico = false;
+bool botonPanicoPresionado = false;
 
 
 /* =========================================================
@@ -292,6 +330,11 @@ void escribirUint32BE(uint8_t *destino, uint32_t valor)
   destino[3] = (uint8_t)valor;
 }
 
+void escribirInt32BE(uint8_t *destino, int32_t valor)
+{
+  escribirUint32BE(destino, (uint32_t)valor);
+}
+
 uint32_t leerUint32BE(const uint8_t *origen)
 {
   return ((uint32_t)origen[0] << 24) |
@@ -320,7 +363,7 @@ bool esIntervaloValido(uint32_t intervaloSegundos)
          intervaloSegundos <= INTERVALO_MAXIMO;
 }
 
-// El firmware original usa GPIO1 para la luz de parqueo. Ese GPIO coincide
+// La nueva PCB usa GPIO1 para una de las luces de parqueo. Ese GPIO coincide
 // con la entrada ADC de bateria de la Heltec V3 y no puede cumplir ambas
 // funciones simultaneamente. Se conserva el campo del protocolo con 0 mV
 // para indicar que esta medicion no esta disponible en esta PCB.
@@ -361,6 +404,151 @@ void guardarConfiguracion()
   preferencias.putBool("remote_alert", alertaRemota);
   preferencias.end();
   guardarPendiente = false;
+}
+
+
+/* =========================================================
+   SENSORES DHT11 Y GPS
+   ========================================================= */
+
+void actualizarDht11()
+{
+  const uint32_t ahora = millis();
+  if (ahora - ultimoDht < 2000UL)
+  {
+    return;
+  }
+  ultimoDht = ahora;
+
+  const float temperatura = dht.readTemperature();
+  const float humedad = dht.readHumidity();
+  dhtDisponible = !isnan(temperatura) && !isnan(humedad);
+
+  if (dhtDisponible)
+  {
+    temperaturaAmbiente = temperatura;
+    humedadAmbiente = humedad;
+  }
+}
+
+uint8_t valorHexadecimal(char caracter)
+{
+  if (caracter >= '0' && caracter <= '9')
+  {
+    return caracter - '0';
+  }
+  if (caracter >= 'A' && caracter <= 'F')
+  {
+    return caracter - 'A' + 10;
+  }
+  if (caracter >= 'a' && caracter <= 'f')
+  {
+    return caracter - 'a' + 10;
+  }
+  return 0xFF;
+}
+
+bool checksumNmeaValido(char *linea)
+{
+  if (linea[0] != '$')
+  {
+    return false;
+  }
+
+  char *asterisco = strchr(linea, '*');
+  if (asterisco == nullptr || asterisco[1] == '\0' || asterisco[2] == '\0')
+  {
+    return false;
+  }
+
+  uint8_t calculado = 0;
+  for (char *caracter = linea + 1; caracter < asterisco; caracter++)
+  {
+    calculado ^= (uint8_t)*caracter;
+  }
+
+  const uint8_t alto = valorHexadecimal(asterisco[1]);
+  const uint8_t bajo = valorHexadecimal(asterisco[2]);
+  if (alto == 0xFF || bajo == 0xFF)
+  {
+    return false;
+  }
+
+  *asterisco = '\0';
+  return calculado == (uint8_t)((alto << 4) | bajo);
+}
+
+double convertirCoordenadaGps(const char *valor, char hemisferio)
+{
+  const double coordenadaNmea = atof(valor);
+  const int grados = (int)(coordenadaNmea / 100.0);
+  const double minutos = coordenadaNmea - grados * 100.0;
+  double coordenada = grados + minutos / 60.0;
+  if (hemisferio == 'S' || hemisferio == 'W')
+  {
+    coordenada = -coordenada;
+  }
+  return coordenada;
+}
+
+void procesarLineaGps(char *linea)
+{
+  if (!checksumNmeaValido(linea))
+  {
+    return;
+  }
+
+  char *campos[7] = {nullptr};
+  uint8_t cantidad = 0;
+  char *contexto = nullptr;
+  char *campo = strtok_r(linea, ",", &contexto);
+  while (campo != nullptr && cantidad < 7)
+  {
+    campos[cantidad++] = campo;
+    campo = strtok_r(nullptr, ",", &contexto);
+  }
+
+  if (cantidad < 7 ||
+      (strcmp(campos[0], "$GPRMC") != 0 && strcmp(campos[0], "$GNRMC") != 0) ||
+      campos[2][0] != 'A' || campos[3][0] == '\0' || campos[5][0] == '\0')
+  {
+    return;
+  }
+
+  latitudGps = convertirCoordenadaGps(campos[3], campos[4][0]);
+  longitudGps = convertirCoordenadaGps(campos[5], campos[6][0]);
+  gpsConPosicion = true;
+  ultimaPosicionGps = millis();
+}
+
+void actualizarGps()
+{
+  while (gps.available() > 0)
+  {
+    const char caracter = (char)gps.read();
+    if (caracter == '\n')
+    {
+      lineaGps[posicionLineaGps] = '\0';
+      procesarLineaGps(lineaGps);
+      posicionLineaGps = 0;
+    }
+    else if (caracter != '\r')
+    {
+      if (posicionLineaGps < sizeof(lineaGps) - 1)
+      {
+        lineaGps[posicionLineaGps++] = caracter;
+      }
+      else
+      {
+        posicionLineaGps = 0;
+      }
+    }
+  }
+
+  if (gpsConPosicion && millis() - ultimaPosicionGps > 5000UL)
+  {
+    gpsConPosicion = false;
+  }
 }
 
 
@@ -412,6 +600,10 @@ const char *nombreMovimiento(Movimiento movimiento)
 
 const char *eventoPrincipal()
 {
+  if (panicoActivo)
+  {
+    return "PANICO LOCAL";
+  }
   if (alertaRemota)
   {
     return "ALERTA REMOTA";
@@ -456,7 +648,7 @@ void actualizarOLED()
   }
   ultimoOLED = ahora;
 
-  if (alertaRemota)
+  if (alertaRemota || panicoActivo)
   {
     const char *alarma = "ALARMA: OFF";
     if (faseAlarma)
@@ -464,11 +656,34 @@ void actualizarOLED()
       alarma = "ALARMA: ON";
     }
     mostrarOLED(
-      "ALERTA REMOTA",
+      panicoActivo ? "PANICO LOCAL" : "ALERTA REMOTA",
       "MOTORES BLOQUEADOS",
       alarma,
-      "Esperando desbloqueo"
+      panicoActivo ? "Pulse para liberar" : "Esperando desbloqueo"
     );
+    return;
+  }
+
+  // Alterna la vista de conduccion con los sensores agregados a la nueva PCB.
+  if ((ahora / 3000UL) % 2 == 1)
+  {
+    String posicion = "GPS: SIN POSICION";
+    String coordenada1 = "Esperando satelites";
+    String coordenada2 = "";
+    if (gpsConPosicion)
+    {
+      posicion = "GPS: POSICION VALIDA";
+      coordenada1 = "Lat: " + String(latitudGps, 6);
+      coordenada2 = "Lon: " + String(longitudGps, 6);
+    }
+
+    String ambiente = "DHT11: SIN LECTURA";
+    if (dhtDisponible)
+    {
+      ambiente = "T:" + String(temperaturaAmbiente, 1) +
+                  "C H:" + String(humedadAmbiente, 0) + "%";
+    }
+    mostrarOLED(posicion, coordenada1, coordenada2, ambiente);
     return;
   }
 
@@ -945,8 +1160,8 @@ void actualizarMotores()
   }
   ultimoMotor = ahora;
 
-  // El bloqueo remoto tiene prioridad absoluta y detención inmediata.
-  if (alertaRemota)
+  // Los bloqueos local y remoto tienen prioridad absoluta.
+  if (alertaRemota || panicoActivo)
   {
     movimientoSolicitado = MOV_DETENIDO;
     detenerMotoresInmediato();
@@ -1029,6 +1244,36 @@ void actualizarMotores()
   movimientoActual = movimientoObjetivo;
 }
 
+void actualizarBotonPanico()
+{
+  const uint32_t ahora = millis();
+  const bool lectura = digitalRead(PIN_BOTON_PANICO) == LOW;
+
+  if (lectura != ultimaLecturaPanico)
+  {
+    ultimaLecturaPanico = lectura;
+    ultimoCambioPanico = ahora;
+  }
+
+  if (ahora - ultimoCambioPanico < 40UL || lectura == botonPanicoPresionado)
+  {
+    return;
+  }
+
+  botonPanicoPresionado = lectura;
+  if (!botonPanicoPresionado)
+  {
+    return;
+  }
+
+  // La primera pulsacion bloquea el vehiculo; la siguiente lo libera. Al
+  // liberar nunca se reanuda el movimiento anterior.
+  panicoActivo = !panicoActivo;
+  movimientoSolicitado = MOV_DETENIDO;
+  detenerMotoresInmediato();
+  Serial.printf("[Panico] %s\r\n", panicoActivo ? "ACTIVADO" : "DESACTIVADO");
+}
+
 
 /* =========================================================
    BLUETOOTH Y ACTUADORES
@@ -1055,14 +1300,16 @@ bool esComandoMovimiento(char comando)
 
 char normalizarComandoBluetooth(char comando)
 {
-  // Las minusculas w/u/v/x apagan actuadores. Deben conservar su significado;
-  // el resto de las letras se acepta indistintamente en mayuscula/minuscula.
+  // Estas minusculas apagan actuadores. El resto de las letras se acepta
+  // indistintamente en mayuscula o minuscula.
   switch (comando)
   {
+    case 'c':
     case 'w':
     case 'u':
     case 'v':
     case 'x':
+    case 'z':
       return comando;
     default:
       if (comando >= 'a' && comando <= 'z')
@@ -1070,6 +1317,42 @@ char normalizarComandoBluetooth(char comando)
         return comando - ('a' - 'A');
       }
       return comando;
+  }
+}
+
+void configurarIntermitente(uint8_t luz, bool encendida)
+{
+  if (luz == LUZ_PARQUEO)
+  {
+    lucesParqueo = encendida;
+    if (encendida)
+    {
+      direccionalIzquierda = false;
+      direccionalDerecha = false;
+    }
+  }
+  else if (luz == LUZ_DIRECCIONAL_IZQUIERDA)
+  {
+    direccionalIzquierda = encendida;
+    if (encendida)
+    {
+      lucesParqueo = false;
+      direccionalDerecha = false;
+    }
+  }
+  else if (luz == LUZ_DIRECCIONAL_DERECHA)
+  {
+    direccionalDerecha = encendida;
+    if (encendida)
+    {
+      lucesParqueo = false;
+      direccionalIzquierda = false;
+    }
+  }
+
+  if (!lucesParqueo && !direccionalIzquierda && !direccionalDerecha)
+  {
+    faseIntermitentes = false;
   }
 }
 
@@ -1082,11 +1365,11 @@ void procesarComandoBluetooth(char comando)
 
   const char orden = normalizarComandoBluetooth(comando);
 
-  if (alertaRemota && esComandoMovimiento(orden))
+  if ((alertaRemota || panicoActivo) && esComandoMovimiento(orden))
   {
     movimientoSolicitado = MOV_DETENIDO;
     Serial.printf(
-      "[Bluetooth] Movimiento %c ignorado: alerta remota activa\r\n",
+      "[Bluetooth] Movimiento %c ignorado: bloqueo activo\r\n",
       orden
     );
     return;
@@ -1138,11 +1421,22 @@ void procesarComandoBluetooth(char comando)
       luzTrasera = false;
       break;
     case 'X':
-      lucesParqueo = true;
+      configurarIntermitente(LUZ_PARQUEO, true);
       break;
     case 'x':
-      lucesParqueo = false;
-      faseParqueo = false;
+      configurarIntermitente(LUZ_PARQUEO, false);
+      break;
+    case 'Z':
+      configurarIntermitente(LUZ_DIRECCIONAL_IZQUIERDA, true);
+      break;
+    case 'z':
+      configurarIntermitente(LUZ_DIRECCIONAL_IZQUIERDA, false);
+      break;
+    case 'C':
+      configurarIntermitente(LUZ_DIRECCIONAL_DERECHA, true);
+      break;
+    case 'c':
+      configurarIntermitente(LUZ_DIRECCIONAL_DERECHA, false);
       break;
     case 'V':
       bocina = true;
@@ -1219,6 +1513,31 @@ void imprimirDiagnosticoLocal()
     velocidadDerecha,
     eventoPrincipal()
   );
+
+  if (gpsConPosicion)
+  {
+    Serial.printf(
+      "[LOCAL] GPS lat=%.6f lon=%.6f",
+      latitudGps,
+      longitudGps
+    );
+  }
+  else
+  {
+    Serial.print("[LOCAL] GPS sin posicion");
+  }
+  if (dhtDisponible)
+  {
+    Serial.printf(
+      " DHT11=%.1f C, %.0f %%\r\n",
+      temperaturaAmbiente,
+      humedadAmbiente
+    );
+  }
+  else
+  {
+    Serial.println(" DHT11 sin lectura");
+  }
 }
 
 void escribirBuzzer(bool encendido)
@@ -1230,6 +1549,12 @@ void escribirBuzzer(bool encendido)
   buzzerSonando = encendido;
   // El TIC usa un buzzer activo: se gobierna directamente en HIGH/LOW.
   digitalWrite(PIN_BUZZER, encendido);
+}
+
+void escribirIntermitentes(bool izquierda, bool derecha)
+{
+  digitalWrite(PIN_PARQUEO_IZQUIERDO, izquierda);
+  digitalWrite(PIN_PARQUEO_DERECHO, derecha);
 }
 
 bool actualizarAvisoReversa(uint32_t ahora)
@@ -1282,17 +1607,20 @@ void actualizarActuadores()
 {
   const uint32_t ahora = millis();
 
-  if (!lucesParqueo)
+  const bool intermitentesActivos =
+    lucesParqueo || direccionalIzquierda || direccionalDerecha;
+  if (!intermitentesActivos)
   {
-    faseParqueo = false;
+    faseIntermitentes = false;
   }
-  else if (ahora - ultimoParqueo >= 300UL)
+  else if (ahora - ultimoIntermitente >= 300UL)
   {
-    ultimoParqueo = ahora;
-    faseParqueo = !faseParqueo;
+    ultimoIntermitente = ahora;
+    faseIntermitentes = !faseIntermitentes;
   }
 
-  if (!alertaRemota)
+  const bool alarmaActiva = alertaRemota || panicoActivo;
+  if (!alarmaActiva)
   {
     faseAlarma = false;
   }
@@ -1308,9 +1636,12 @@ void actualizarActuadores()
   // true enciende la salida (HIGH); false la apaga (LOW).
   digitalWrite(PIN_LUZ_FRONTAL, luzFrontal);
   digitalWrite(PIN_LUZ_TRASERA, salidaLuzTrasera);
-  digitalWrite(PIN_LUZ_PARQUEO, faseParqueo);
-  // La alarma remota tiene prioridad sobre la bocina y el aviso de reversa.
-  if (alertaRemota)
+  escribirIntermitentes(
+    faseIntermitentes && (lucesParqueo || direccionalIzquierda),
+    faseIntermitentes && (lucesParqueo || direccionalDerecha)
+  );
+  // Cualquier alarma tiene prioridad sobre la bocina y el aviso de reversa.
+  if (alarmaActiva)
   {
     escribirBuzzer(faseAlarma);
   }
@@ -1351,6 +1682,14 @@ uint8_t construirFlagsActuadores()
   if (alertaRemota)
   {
     flags |= 1U << 5;
+  }
+  if (direccionalIzquierda)
+  {
+    flags |= 1U << 6;
+  }
+  if (direccionalDerecha)
+  {
+    flags |= 1U << 7;
   }
   return flags;
 }
@@ -1404,6 +1743,14 @@ void prepararTelemetria()
   {
     flags |= 1U << 2;
   }
+  if (gpsConPosicion)
+  {
+    flags |= 1U << 3;
+  }
+  if (dhtDisponible)
+  {
+    flags |= 1U << 4;
+  }
 
   // Cabecera: version, tipo, flags, transaccion y resultado del comando.
   appData[0] = VERSION_PROTOCOLO;
@@ -1431,10 +1778,46 @@ void prepararTelemetria()
   }
   appData[20] = checksum;
 
-  // Campos finales: intervalo en segundos y bateria en milivoltios.
+  // Campos administrativos: intervalo en segundos y bateria en milivoltios.
   escribirUint32BE(&appData[21], appTxDutyCycle / 1000UL);
   escribirUint16BE(&appData[25], leerBateriaMv());
-  appDataSize = 27;
+
+  // Posicion GPS en grados decimales multiplicados por 10^7. Si no existe una
+  // posicion valida se envian ceros y el bit GPS de la cabecera permanece en 0.
+  const int32_t latitudEscalada = gpsConPosicion
+    ? (int32_t)llround(latitudGps * 10000000.0)
+    : 0;
+  const int32_t longitudEscalada = gpsConPosicion
+    ? (int32_t)llround(longitudGps * 10000000.0)
+    : 0;
+  escribirInt32BE(&appData[27], latitudEscalada);
+  escribirInt32BE(&appData[31], longitudEscalada);
+
+  uint8_t checksumGps = 0;
+  for (uint8_t posicion = 27; posicion < 35; posicion++)
+  {
+    checksumGps ^= appData[posicion];
+  }
+  appData[35] = checksumGps;
+
+  // Temperatura ambiente y humedad relativa en decimas. El bit DHT de la
+  // cabecera permite distinguir una lectura valida de los ceros de relleno.
+  const int16_t temperaturaAmbienteEscalada = dhtDisponible
+    ? escalarADecimas(temperaturaAmbiente)
+    : 0;
+  const uint16_t humedadAmbienteEscalada = dhtDisponible
+    ? (uint16_t)lroundf(humedadAmbiente * 10.0f)
+    : 0;
+  escribirInt16BE(&appData[36], temperaturaAmbienteEscalada);
+  escribirUint16BE(&appData[38], humedadAmbienteEscalada);
+
+  uint8_t checksumDht = 0;
+  for (uint8_t posicion = 36; posicion < 40; posicion++)
+  {
+    checksumDht ^= appData[posicion];
+  }
+  appData[40] = checksumDht;
+  appDataSize = 41;
 }
 
 void prepararEnvio()
@@ -1540,7 +1923,7 @@ void procesarLuz(const uint8_t *datos, uint8_t longitud)
 
   const uint8_t luz = datos[3];
   const uint8_t estado = datos[4];
-  if (luz > LUZ_PARQUEO || estado > 1)
+  if (luz > LUZ_DIRECCIONAL_DERECHA || estado > 1)
   {
     Serial.println("[Gestion] Identificador o valor de luz invalido");
     programarAck();
@@ -1557,11 +1940,9 @@ void procesarLuz(const uint8_t *datos, uint8_t longitud)
       luzTrasera = encendida;
       break;
     case LUZ_PARQUEO:
-      lucesParqueo = encendida;
-      if (!encendida)
-      {
-        faseParqueo = false;
-      }
+    case LUZ_DIRECCIONAL_IZQUIERDA:
+    case LUZ_DIRECCIONAL_DERECHA:
+      configurarIntermitente(luz, encendida);
       break;
   }
 
@@ -1667,14 +2048,17 @@ void setup()
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(PIN_LUZ_FRONTAL, OUTPUT);
   pinMode(PIN_LUZ_TRASERA, OUTPUT);
-  pinMode(PIN_LUZ_PARQUEO, OUTPUT);
+  pinMode(PIN_PARQUEO_IZQUIERDO, OUTPUT);
+  pinMode(PIN_PARQUEO_DERECHO, OUTPUT);
+  pinMode(PIN_BOTON_PANICO, INPUT_PULLUP);
 
   detenerMotoresInmediato();
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(PIN_LUZ_FRONTAL, LOW);
   digitalWrite(PIN_LUZ_TRASERA, LOW);
-  digitalWrite(PIN_LUZ_PARQUEO, LOW);
+  escribirIntermitentes(false, false);
   cargarConfiguracion();
+  dht.begin();
   if (!usarTTN)
   {
     // Ignora la alerta durante la prueba local, sin borrar el valor guardado.
@@ -1683,6 +2067,9 @@ void setup()
   }
 
   bluetooth.begin(9600, SERIAL_8N1, PIN_BT_RX, PIN_BT_TX);
+  // TX se establece en -1 porque la Heltec no configura el GPS. Esto deja
+  // libre GPIO35, que también controla el LED blanco incorporado.
+  gps.begin(9600, SERIAL_8N1, PIN_GPS_RX, -1);
   mpuDisponible = iniciarMpu6050();
   if (mpuDisponible)
   {
@@ -1743,6 +2130,8 @@ void setup()
   {
     Serial.printf(" MPU6050: NO DISPONIBLE\r\n");
   }
+  Serial.println(" GPS GY-GPS6MV2: TX del GPS -> GPIO34, 9600 baudios");
+  Serial.println(" DHT11: GPIO33 | Boton de panico: GPIO36");
   Serial.println("========================================");
 }
 
@@ -1844,6 +2233,9 @@ void actualizarLoRa()
 void loop()
 {
   guardarConfiguracion();
+  actualizarGps();
+  actualizarDht11();
+  actualizarBotonPanico();
   if (!usarTTN)
   {
     actualizarControlUsbLocal();

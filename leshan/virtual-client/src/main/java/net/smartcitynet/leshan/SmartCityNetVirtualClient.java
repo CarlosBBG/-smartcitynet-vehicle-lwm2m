@@ -35,6 +35,7 @@ import org.eclipse.leshan.core.model.ObjectLoader;
 import org.eclipse.leshan.core.model.ObjectModel;
 import org.eclipse.leshan.core.node.LwM2mResource;
 import org.eclipse.leshan.core.request.BindingMode;
+import org.eclipse.leshan.core.ResponseCode;
 import org.eclipse.leshan.core.response.ReadResponse;
 import org.eclipse.leshan.core.response.WriteResponse;
 import org.eclipse.leshan.transport.californium.client.endpoint.CaliforniumClientEndpointsProvider;
@@ -141,7 +142,15 @@ public final class SmartCityNetVirtualClient {
             boolean mpuAvailable,
             boolean frontLight,
             boolean rearLight,
-            boolean parkingLights) {
+            boolean parkingLights,
+            boolean leftIndicator,
+            boolean rightIndicator,
+            double latitude,
+            double longitude,
+            boolean gpsAvailable,
+            double ambientTemperature,
+            double ambientHumidity,
+            boolean dhtAvailable) {
     }
 
     private static final class BridgeApi {
@@ -203,7 +212,15 @@ public final class SmartCityNetVirtualClient {
                     state.path("mpu_available").asBoolean(false),
                     state.path("front_light_on").asBoolean(false),
                     state.path("rear_light_on").asBoolean(false),
-                    state.path("parking_lights_on").asBoolean(false));
+                    state.path("parking_lights_on").asBoolean(false),
+                    state.path("left_indicator_on").asBoolean(false),
+                    state.path("right_indicator_on").asBoolean(false),
+                    state.path("latitude").asDouble(),
+                    state.path("longitude").asDouble(),
+                    state.path("gps_available").asBoolean(false),
+                    state.path("ambient_temperature_c").asDouble(),
+                    state.path("ambient_humidity_percent").asDouble(),
+                    state.path("dht_available").asBoolean(false));
         }
 
         void setTransmissionInterval(long seconds) throws Exception {
@@ -216,7 +233,8 @@ public final class SmartCityNetVirtualClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 202) {
-                throw new IllegalStateException(
+                throw new BridgeRequestException(
+                        response.statusCode(),
                         "Bridge rechazo la escritura: HTTP " + response.statusCode() + " " + response.body());
             }
         }
@@ -231,7 +249,8 @@ public final class SmartCityNetVirtualClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 202) {
-                throw new IllegalStateException(
+                throw new BridgeRequestException(
+                        response.statusCode(),
                         "Bridge rechazo la alerta: HTTP " + response.statusCode() + " " + response.body());
             }
         }
@@ -246,7 +265,8 @@ public final class SmartCityNetVirtualClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 202) {
-                throw new IllegalStateException(
+                throw new BridgeRequestException(
+                        response.statusCode(),
                         "Bridge rechazo la luz " + light + ": HTTP "
                                 + response.statusCode() + " " + response.body());
             }
@@ -263,6 +283,19 @@ public final class SmartCityNetVirtualClient {
                         "Bridge no disponible: HTTP " + response.statusCode() + " " + response.body());
             }
             return JSON.readTree(response.body());
+        }
+    }
+
+    private static final class BridgeRequestException extends Exception {
+        private final int statusCode;
+
+        BridgeRequestException(int statusCode, String message) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        int statusCode() {
+            return statusCode;
         }
     }
 
@@ -311,6 +344,14 @@ public final class SmartCityNetVirtualClient {
                 case 23 -> ReadResponse.success(resourceId, value.frontLight());
                 case 24 -> ReadResponse.success(resourceId, value.rearLight());
                 case 25 -> ReadResponse.success(resourceId, value.parkingLights());
+                case 26 -> ReadResponse.success(resourceId, value.latitude());
+                case 27 -> ReadResponse.success(resourceId, value.longitude());
+                case 28 -> ReadResponse.success(resourceId, value.gpsAvailable());
+                case 29 -> ReadResponse.success(resourceId, value.ambientTemperature());
+                case 30 -> ReadResponse.success(resourceId, value.ambientHumidity());
+                case 31 -> ReadResponse.success(resourceId, value.dhtAvailable());
+                case 32 -> ReadResponse.success(resourceId, value.leftIndicator());
+                case 33 -> ReadResponse.success(resourceId, value.rightIndicator());
                 default -> super.read(server, resourceId);
             };
         }
@@ -337,7 +378,8 @@ public final class SmartCityNetVirtualClient {
                         return WriteResponse.badRequest("Remote Alert debe ser booleano");
                     }
                     bridge.setRemoteAlert((Boolean) rawValue);
-                } else if (resourceId >= 23 && resourceId <= 25) {
+                } else if ((resourceId >= 23 && resourceId <= 25)
+                        || resourceId == 32 || resourceId == 33) {
                     if (!(rawValue instanceof Boolean)) {
                         return WriteResponse.badRequest("El estado de la luz debe ser booleano");
                     }
@@ -345,6 +387,8 @@ public final class SmartCityNetVirtualClient {
                         case 23 -> "front";
                         case 24 -> "rear";
                         case 25 -> "parking";
+                        case 32 -> "left";
+                        case 33 -> "right";
                         default -> throw new IllegalStateException("Recurso de luz inesperado");
                     };
                     bridge.setVehicleLight(light, (Boolean) rawValue);
@@ -353,6 +397,17 @@ public final class SmartCityNetVirtualClient {
                 }
                 refresh();
                 return WriteResponse.success();
+            } catch (BridgeRequestException error) {
+                if (error.statusCode() == 404) {
+                    return WriteResponse.notFound();
+                }
+                if (error.statusCode() == 409) {
+                    return new WriteResponse(ResponseCode.PRECONDITION_FAILED, error.getMessage());
+                }
+                if (error.statusCode() >= 400 && error.statusCode() < 500) {
+                    return WriteResponse.badRequest(error.getMessage());
+                }
+                return WriteResponse.internalServerError(error.getMessage());
             } catch (Exception error) {
                 return WriteResponse.internalServerError(error.getMessage());
             }
@@ -392,6 +447,14 @@ public final class SmartCityNetVirtualClient {
                 notifyIfChanged(23, previous.frontLight(), updated.frontLight());
                 notifyIfChanged(24, previous.rearLight(), updated.rearLight());
                 notifyIfChanged(25, previous.parkingLights(), updated.parkingLights());
+                notifyIfChanged(26, previous.latitude(), updated.latitude());
+                notifyIfChanged(27, previous.longitude(), updated.longitude());
+                notifyIfChanged(28, previous.gpsAvailable(), updated.gpsAvailable());
+                notifyIfChanged(29, previous.ambientTemperature(), updated.ambientTemperature());
+                notifyIfChanged(30, previous.ambientHumidity(), updated.ambientHumidity());
+                notifyIfChanged(31, previous.dhtAvailable(), updated.dhtAvailable());
+                notifyIfChanged(32, previous.leftIndicator(), updated.leftIndicator());
+                notifyIfChanged(33, previous.rightIndicator(), updated.rightIndicator());
             } catch (Exception error) {
                 System.err.println("No se pudo actualizar el device twin: " + error.getMessage());
             }

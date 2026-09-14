@@ -37,13 +37,17 @@ LIGHT_RESOURCE_PATHS = {
     "front": "/32769/0/23",
     "rear": "/32769/0/24",
     "parking": "/32769/0/25",
+    "left": "/32769/0/32",
+    "right": "/32769/0/33",
 }
 LIGHT_STATE_KEYS = {
     "/32769/0/23": "front_light_on",
     "/32769/0/24": "rear_light_on",
     "/32769/0/25": "parking_lights_on",
+    "/32769/0/32": "left_indicator_on",
+    "/32769/0/33": "right_indicator_on",
 }
-COMMAND_TIMEOUT_SECONDS = 180
+COMMAND_TIMEOUT_SECONDS = 60
 
 
 class PendingOperationError(RuntimeError):
@@ -150,7 +154,17 @@ class Bridge:
                     state["remote_alert_active"] = bool(operation["requested_value"])
                 light_state_key = LIGHT_STATE_KEYS.get(operation["resource_path"])
                 if light_state_key:
-                    state[light_state_key] = bool(operation["requested_value"])
+                    requested = bool(operation["requested_value"])
+                    state[light_state_key] = requested
+                    if requested and operation["resource_path"] == "/32769/0/25":
+                        state["left_indicator_on"] = False
+                        state["right_indicator_on"] = False
+                    elif requested and operation["resource_path"] == "/32769/0/32":
+                        state["parking_lights_on"] = False
+                        state["right_indicator_on"] = False
+                    elif requested and operation["resource_path"] == "/32769/0/33":
+                        state["parking_lights_on"] = False
+                        state["left_indicator_on"] = False
             self.store.upsert_device(
                 event.device_id,
                 event.dev_eui,

@@ -101,8 +101,8 @@ curl -X PUT \
 ```
 
 Las luces se controlan en el mismo objeto `/32769/0`. Este ejemplo enciende la
-luz frontal; use los recursos `24` y `25` para la trasera y parqueo
-respectivamente:
+luz frontal; use `24`, `25`, `32` y `33` para la trasera, parqueo, direccional
+izquierda y direccional derecha respectivamente:
 
 ```bash
 curl -X PUT \
@@ -141,6 +141,14 @@ curl -X PUT \
 | `/32769/0/23` | Front Light | RW | Heltec/Bridge |
 | `/32769/0/24` | Rear Light | RW | Heltec/Bridge |
 | `/32769/0/25` | Parking Lights | RW | Heltec/Bridge |
+| `/32769/0/26` | Latitude | R | GPS |
+| `/32769/0/27` | Longitude | R | GPS |
+| `/32769/0/28` | GPS Available | R | Heltec |
+| `/32769/0/29` | Ambient Temperature | R | DHT11 |
+| `/32769/0/30` | Relative Humidity | R | DHT11 |
+| `/32769/0/31` | DHT Available | R | Heltec |
+| `/32769/0/32` | Left Turn Indicator | RW | Heltec/Bridge |
+| `/32769/0/33` | Right Turn Indicator | RW | Heltec/Bridge |
 
 El identificador 32769 es provisional para laboratorio. El rango 32769–42768
 requiere reserva empresarial en OMNA y no debe presentarse como una asignación

@@ -1,3 +1,4 @@
+import struct
 import unittest
 
 from smartcitynet_bridge.protocol import (
@@ -52,6 +53,82 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(message.front_light_on)
         self.assertFalse(message.rear_light_on)
         self.assertFalse(message.parking_lights_on)
+        self.assertFalse(message.gps_available)
+        self.assertIsNone(message.latitude)
+        self.assertFalse(message.dht_available)
+        self.assertIsNone(message.ambient_temperature_c)
+        self.assertIsNone(message.ambient_humidity_percent)
+
+    def test_decode_vehicle_telemetry_with_gps(self):
+        legacy = bytes.fromhex(
+            "01 03 0F 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        coordinates = struct.pack(">ii", round(-0.1806532 * 10_000_000), round(-78.467834 * 10_000_000))
+        gps_checksum = 0
+        for value in coordinates:
+            gps_checksum ^= value
+
+        message = decode_uplink(legacy + coordinates + bytes([gps_checksum]))
+
+        self.assertTrue(message.gps_available)
+        self.assertAlmostEqual(message.latitude, -0.1806532, places=7)
+        self.assertAlmostEqual(message.longitude, -78.467834, places=7)
+
+    def test_decode_vehicle_telemetry_with_environment(self):
+        legacy = bytes.fromhex(
+            "01 03 1F 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        coordinates = struct.pack(">ii", -1_806_532, -784_678_340)
+        gps_checksum = 0
+        for value in coordinates:
+            gps_checksum ^= value
+        environment = struct.pack(">hH", 234, 617)
+        dht_checksum = 0
+        for value in environment:
+            dht_checksum ^= value
+
+        message = decode_uplink(
+            legacy + coordinates + bytes([gps_checksum]) + environment + bytes([dht_checksum])
+        )
+
+        self.assertTrue(message.dht_available)
+        self.assertAlmostEqual(message.ambient_temperature_c, 23.4)
+        self.assertAlmostEqual(message.ambient_humidity_percent, 61.7)
+
+    def test_decode_vehicle_directional_indicators(self):
+        payload = bytearray.fromhex(
+            "01 03 07 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        payload[17] = 0xC0
+        payload[20] = 0
+        for value in payload[5:20]:
+            payload[20] ^= value
+
+        message = decode_uplink(bytes(payload))
+
+        self.assertTrue(message.left_indicator_on)
+        self.assertTrue(message.right_indicator_on)
+
+    def test_reject_vehicle_bad_gps_checksum(self):
+        legacy = bytes.fromhex(
+            "01 03 0F 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        coordinates = struct.pack(">ii", -1_806_532, -784_678_340)
+        with self.assertRaises(ProtocolError):
+            decode_uplink(legacy + coordinates + b"\x00")
+
+    def test_reject_vehicle_bad_dht_checksum(self):
+        legacy = bytes.fromhex(
+            "01 03 1F 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        coordinates = struct.pack(">ii", -1_806_532, -784_678_340)
+        gps_checksum = 0
+        for value in coordinates:
+            gps_checksum ^= value
+        environment = struct.pack(">hH", 234, 617)
+
+        with self.assertRaises(ProtocolError):
+            decode_uplink(legacy + coordinates + bytes([gps_checksum]) + environment + b"\x00")
 
     def test_reject_vehicle_bad_checksum(self):
         payload = bytes.fromhex(
@@ -68,10 +145,18 @@ class ProtocolTests(unittest.TestCase):
             encode_light_command(10, 2, True),
             bytes.fromhex("01 12 0A 02 01"),
         )
+        self.assertEqual(
+            encode_light_command(11, 3, True),
+            bytes.fromhex("01 12 0B 03 01"),
+        )
+        self.assertEqual(
+            encode_light_command(12, 4, False),
+            bytes.fromhex("01 12 0C 04 00"),
+        )
 
     def test_reject_unknown_light(self):
         with self.assertRaises(ProtocolError):
-            encode_light_command(10, 3, True)
+            encode_light_command(10, 5, True)
 
 
 if __name__ == "__main__":

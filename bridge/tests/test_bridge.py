@@ -2,6 +2,7 @@ import base64
 import json
 from pathlib import Path
 import sqlite3
+import struct
 import tempfile
 import unittest
 
@@ -132,6 +133,88 @@ class BridgeTests(unittest.TestCase):
         device = self.bridge.store.get_device("vehiculo01")
         self.assertTrue(device["state"]["parking_lights_on"])
         self.assertEqual(self.bridge.store.list_operations()[0]["status"], "acknowledged")
+
+    def test_vehicle_left_indicator_downlink(self):
+        binary = bytes.fromhex("01 01 01 00 00 00000001 0000001E 0E74")
+        event = {
+            "end_device_ids": {"device_id": "vehiculo01", "dev_eui": "70B3"},
+            "received_at": "2026-08-19T12:00:00Z",
+            "uplink_message": {
+                "f_port": 10,
+                "frm_payload": base64.b64encode(binary).decode(),
+                "rx_metadata": [],
+            },
+        }
+        self.bridge.handle_uplink(json.dumps(event).encode())
+        operation = self.bridge.set_vehicle_light("vehiculo01", "left", True)
+
+        self.assertEqual(operation["resource_path"], "/32769/0/32")
+        _, message, _ = self.bridge.mqtt.calls[0]
+        self.assertEqual(
+            base64.b64decode(message["downlinks"][0]["frm_payload"]),
+            bytes.fromhex("01 12 01 03 01"),
+        )
+
+        ack = bytes.fromhex("01 02 01 00 0000001E")
+        event["uplink_message"]["frm_payload"] = base64.b64encode(ack).decode()
+        self.bridge.handle_uplink(json.dumps(event).encode())
+        state = self.bridge.store.get_device("vehiculo01")["state"]
+        self.assertTrue(state["left_indicator_on"])
+        self.assertFalse(state["right_indicator_on"])
+        self.assertFalse(state["parking_lights_on"])
+
+    def test_vehicle_gps_updates_device_twin(self):
+        legacy = bytes.fromhex(
+            "01 03 09 00 00 00 00 0190 0190 0000 0000 0000 00 00 01 01 0000001E 0000"
+        )
+        coordinates = struct.pack(">ii", -1_806_532, -784_678_340)
+        gps_checksum = 0
+        for value in coordinates:
+            gps_checksum ^= value
+        binary = legacy + coordinates + bytes([gps_checksum])
+        event = {
+            "end_device_ids": {"device_id": "vehiculo01", "dev_eui": "70B3"},
+            "received_at": "2026-09-10T12:00:00Z",
+            "uplink_message": {
+                "f_port": 10,
+                "frm_payload": base64.b64encode(binary).decode(),
+                "rx_metadata": [],
+            },
+        }
+
+        self.bridge.handle_uplink(json.dumps(event).encode())
+
+        state = self.bridge.store.get_device("vehiculo01")["state"]
+        self.assertTrue(state["gps_available"])
+        self.assertAlmostEqual(state["latitude"], -0.1806532, places=7)
+        self.assertAlmostEqual(state["longitude"], -78.467834, places=7)
+
+    def test_vehicle_environment_updates_device_twin(self):
+        legacy = bytes.fromhex(
+            "01 03 11 00 00 00 00 0190 0190 0000 0000 0000 00 00 01 01 0000001E 0000"
+        )
+        coordinates = bytes(8)
+        environment = struct.pack(">hH", 247, 583)
+        environment_checksum = 0
+        for value in environment:
+            environment_checksum ^= value
+        binary = legacy + coordinates + b"\x00" + environment + bytes([environment_checksum])
+        event = {
+            "end_device_ids": {"device_id": "vehiculo01", "dev_eui": "70B3"},
+            "received_at": "2026-09-10T12:00:00Z",
+            "uplink_message": {
+                "f_port": 10,
+                "frm_payload": base64.b64encode(binary).decode(),
+                "rx_metadata": [],
+            },
+        }
+
+        self.bridge.handle_uplink(json.dumps(event).encode())
+
+        state = self.bridge.store.get_device("vehiculo01")["state"]
+        self.assertTrue(state["dht_available"])
+        self.assertAlmostEqual(state["ambient_temperature_c"], 24.7)
+        self.assertAlmostEqual(state["ambient_humidity_percent"], 58.3)
 
     def test_rejects_a_second_command_while_latest_is_pending(self):
         binary = bytes.fromhex("01 01 01 00 00 00000001 0000001E 0E74")

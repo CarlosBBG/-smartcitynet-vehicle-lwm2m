@@ -55,7 +55,7 @@
       <figure class="vehicle-map">
         <div class="map-heading">
           <span>Vista superior</span>
-          <span>{{ activeLightCount }} de 3 luces encendidas</span>
+          <span>{{ activeLightCount }} {{ activeLightCount === 1 ? 'función de luz activa' : 'funciones de luz activas' }}</span>
         </div>
 
         <svg class="vehicle-svg" viewBox="0 0 280 390" role="img" aria-label="Vista superior y sensores del vehículo">
@@ -98,10 +98,12 @@
               <circle class="vehicle-light" cx="111" cy="269" r="5" />
               <circle class="vehicle-light" cx="169" cy="269" r="5" />
             </g>
-            <g :class="['light-group', 'parking-lighting', { active: parkingLightsOn }]">
+            <g :class="['light-group', 'indicator-lighting', 'left-indicator', { active: parkingLightsOn || leftIndicatorOn }]">
               <circle class="vehicle-light" cx="98" cy="139" r="3.5" />
-              <circle class="vehicle-light" cx="182" cy="139" r="3.5" />
               <circle class="vehicle-light" cx="102" cy="257" r="3.5" />
+            </g>
+            <g :class="['light-group', 'indicator-lighting', 'right-indicator', { active: parkingLightsOn || rightIndicatorOn }]">
+              <circle class="vehicle-light" cx="182" cy="139" r="3.5" />
               <circle class="vehicle-light" cx="178" cy="257" r="3.5" />
             </g>
           </g>
@@ -163,6 +165,30 @@
           </span>
         </div>
 
+        <section :class="['environment-panel', { unavailable: !dhtAvailable }]" aria-label="Medición ambiental DHT11">
+          <div class="environment-header">
+            <strong>Ambiente</strong>
+            <span>DHT11 · {{ dhtAvailable ? 'lectura válida' : 'sin lectura' }}</span>
+          </div>
+          <div class="environment-readings">
+            <div class="environment-reading temperature-reading">
+              <span class="environment-label">Temperatura</span>
+              <strong>{{ formatEnvironment(ambientTemperature) }}<small>{{ dhtAvailable ? '°C' : '' }}</small></strong>
+              <div class="environment-scale" aria-hidden="true">
+                <span :style="{ width: `${temperatureScale}%` }"></span>
+              </div>
+            </div>
+            <div class="environment-reading humidity-reading">
+              <span class="environment-label">Humedad</span>
+              <strong>{{ formatEnvironment(ambientHumidity) }}<small>{{ dhtAvailable ? '%' : '' }}</small></strong>
+              <div class="environment-scale" aria-hidden="true">
+                <span :style="{ width: `${humidityScale}%` }"></span>
+              </div>
+            </div>
+          </div>
+          <p v-if="!dhtAvailable">Comprueba la conexión del DHT11 en GPIO33.</p>
+        </section>
+
         <div class="data-list">
           <div><span>Distancia frontal</span><strong>{{ formatDistance(state.front_distance_cm) }}</strong></div>
           <div><span>Distancia trasera</span><strong>{{ formatDistance(state.rear_distance_cm) }}</strong></div>
@@ -196,6 +222,51 @@
       </article>
     </section>
     </div>
+
+    <section class="location-panel" aria-labelledby="location-title">
+      <div class="location-heading">
+        <div>
+          <h2 id="location-title">Ubicación del vehículo</h2>
+          <p>Última posición recibida por LoRaWAN</p>
+        </div>
+        <span :class="['tag', gpsAvailable ? 'ok' : 'warn']">
+          GPS {{ gpsAvailable ? 'con posición' : 'esperando señal' }}
+        </span>
+      </div>
+
+      <div class="location-body">
+        <div v-if="gpsAvailable" class="map-frame">
+          <iframe
+            :key="`${latitude},${longitude}`"
+            :src="mapUrl"
+            title="Mapa de la ubicación del vehículo"
+            loading="lazy"
+            referrerpolicy="no-referrer">
+          </iframe>
+          <span class="map-fix" aria-hidden="true"></span>
+        </div>
+
+        <div v-else class="map-empty" role="status">
+          <div class="gps-orbit" aria-hidden="true"><span></span></div>
+          <strong>Buscando una posición válida</strong>
+          <p>Coloca la antena GPS con vista despejada al cielo y espera el próximo uplink.</p>
+        </div>
+
+        <aside class="coordinate-panel" aria-label="Coordenadas GPS">
+          <span class="coordinate-label">Latitud</span>
+          <strong>{{ gpsAvailable ? formatCoordinate(latitude) : '—' }}</strong>
+          <span class="coordinate-label">Longitud</span>
+          <strong>{{ gpsAvailable ? formatCoordinate(longitude) : '—' }}</strong>
+          <div class="location-meta">
+            <span>Actualizada</span>
+            <b>{{ gpsAvailable ? lastSeen : 'Sin posición' }}</b>
+          </div>
+          <a v-if="gpsAvailable" :href="mapLink" target="_blank" rel="noopener noreferrer">
+            Abrir en OpenStreetMap
+          </a>
+        </aside>
+      </div>
+    </section>
 
     <section class="workspace command-space" aria-label="Administración remota">
       <article class="module">
@@ -300,17 +371,64 @@ export default {
     frontLightOn () { return this.booleanState('front_light_on', 0) },
     rearLightOn () { return this.booleanState('rear_light_on', 4) },
     parkingLightsOn () { return this.booleanState('parking_lights_on', 3) },
+    leftIndicatorOn () { return this.booleanState('left_indicator_on', 6) },
+    rightIndicatorOn () { return this.booleanState('right_indicator_on', 7) },
     activeLightCount () {
-      return [this.frontLightOn, this.rearLightOn, this.parkingLightsOn].filter(Boolean).length
+      return [
+        this.frontLightOn,
+        this.rearLightOn,
+        this.parkingLightsOn,
+        this.leftIndicatorOn,
+        this.rightIndicatorOn
+      ].filter(Boolean).length
     },
     lights () {
       return [
         { id: 'front', label: 'Frontal', active: this.frontLightOn },
         { id: 'rear', label: 'Trasera', active: this.rearLightOn },
-        { id: 'parking', label: 'Parqueo', active: this.parkingLightsOn }
+        { id: 'parking', label: 'Parqueo', active: this.parkingLightsOn },
+        { id: 'left', label: 'Izquierda', active: this.leftIndicatorOn },
+        { id: 'right', label: 'Derecha', active: this.rightIndicatorOn }
       ]
     },
     mpuAvailable () { return this.state.mpu_available === true },
+    ambientTemperature () { return Number(this.state.ambient_temperature_c) },
+    ambientHumidity () { return Number(this.state.ambient_humidity_percent) },
+    dhtAvailable () {
+      return this.state.dht_available === true &&
+        Number.isFinite(this.ambientTemperature) &&
+        Number.isFinite(this.ambientHumidity) &&
+        this.ambientHumidity >= 0 && this.ambientHumidity <= 100
+    },
+    temperatureScale () {
+      if (!this.dhtAvailable) return 0
+      return Math.max(0, Math.min(100, ((this.ambientTemperature + 10) / 60) * 100))
+    },
+    humidityScale () {
+      return this.dhtAvailable ? Math.max(0, Math.min(100, this.ambientHumidity)) : 0
+    },
+    latitude () { return Number(this.state.latitude) },
+    longitude () { return Number(this.state.longitude) },
+    gpsAvailable () {
+      return this.state.gps_available === true &&
+        Number.isFinite(this.latitude) && Math.abs(this.latitude) <= 90 &&
+        Number.isFinite(this.longitude) && Math.abs(this.longitude) <= 180
+    },
+    mapUrl () {
+      if (!this.gpsAvailable) return ''
+      const margin = 0.004
+      const bbox = [
+        this.longitude - margin,
+        this.latitude - margin,
+        this.longitude + margin,
+        this.latitude + margin
+      ].join(',')
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${this.latitude},${this.longitude}`)}`
+    },
+    mapLink () {
+      if (!this.gpsAvailable) return '#'
+      return `https://www.openstreetmap.org/?mlat=${this.latitude}&mlon=${this.longitude}#map=17/${this.latitude}/${this.longitude}`
+    },
     batteryAvailable () { return this.stateNumber('battery_mv') > 0 },
     batteryPercent () { return Math.max(0, Math.min(100, this.stateNumber('battery_percent'))) },
     signalBars () {
@@ -409,6 +527,8 @@ export default {
       if (this.operation?.resource_path === '/32769/0/23') return 'Luz frontal'
       if (this.operation?.resource_path === '/32769/0/24') return 'Luz trasera'
       if (this.operation?.resource_path === '/32769/0/25') return 'Luces de parqueo'
+      if (this.operation?.resource_path === '/32769/0/32') return 'Direccional izquierda'
+      if (this.operation?.resource_path === '/32769/0/33') return 'Direccional derecha'
       return this.operation?.resource_path || '—'
     },
     operationValueLabel () {
@@ -416,7 +536,7 @@ export default {
         return Number(this.operation.requested_value) === 1 || this.operation.requested_value === true ? 'Activar' : 'Desactivar'
       }
       if (this.operation?.resource_path === '/32769/0/0') return `${this.operation.requested_value} segundos`
-      if (['/32769/0/23', '/32769/0/24', '/32769/0/25'].includes(this.operation?.resource_path)) {
+      if (['/32769/0/23', '/32769/0/24', '/32769/0/25', '/32769/0/32', '/32769/0/33'].includes(this.operation?.resource_path)) {
         return Number(this.operation.requested_value) === 1 || this.operation.requested_value === true ? 'Encender' : 'Apagar'
       }
       return this.operation?.requested_value ?? '—'
@@ -498,6 +618,14 @@ export default {
       const number = Number(value)
       return Number.isFinite(number) ? `${this.formatNumber(number, 1)}${suffix}` : '—'
     },
+    formatEnvironment (value) {
+      if (!this.dhtAvailable) return '—'
+      return this.formatNumber(value, 1)
+    },
+    formatCoordinate (value) {
+      const number = Number(value)
+      return Number.isFinite(number) ? `${number.toFixed(6)}°` : '—'
+    },
     eventLabel (value) {
       const raw = String(value || '').trim()
       const key = raw.toLowerCase().replaceAll('_', '-').replaceAll(' ', '-')
@@ -518,7 +646,13 @@ export default {
       this.send({ action: 'alert', payload: active })
     },
     requestLight (light, active) {
-      const labels = { front: 'frontal', rear: 'trasera', parking: 'de parqueo' }
+      const labels = {
+        front: 'frontal',
+        rear: 'trasera',
+        parking: 'de parqueo',
+        left: 'direccional izquierda',
+        right: 'direccional derecha'
+      }
       if (!Object.hasOwn(labels, light)) return
       const action = `light-${light}`
       this.busy = true
@@ -644,9 +778,9 @@ export default {
 .rear-lighting.active .light-beam { opacity: .14; }
 .front-lighting.active .vehicle-light { fill: #fff0bf; filter: drop-shadow(0 0 5px #fff0bf); }
 .rear-lighting.active .vehicle-light { fill: var(--red); filter: drop-shadow(0 0 5px var(--red)); }
-.parking-lighting.active .vehicle-light { fill: var(--amber); filter: drop-shadow(0 0 5px var(--amber)); animation: parkingBlink .6s step-end infinite; }
+.indicator-lighting.active .vehicle-light { fill: var(--amber); filter: drop-shadow(0 0 5px var(--amber)); animation: parkingBlink .6s step-end infinite; }
 .car-shell.locked .body { stroke: var(--red); }
-.light-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.light-controls { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
 .light-control { appearance: none; display: grid; min-width: 0; min-height: 58px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; background: #f8faf9; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background-color .15s; }
 .light-control:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-raised); }
 .light-control:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
@@ -671,6 +805,30 @@ export default {
 .lock-symbol { display: grid; width: 54px; height: 54px; flex: 0 0 54px; place-items: center; border: 2px solid var(--magenta); border-radius: 50%; color: var(--magenta); font-family: "Ubuntu", "DejaVu Sans", Arial, sans-serif; font-size: 27px; font-weight: 500; }
 .lock-instrument.danger .lock-symbol { border-color: var(--red); color: var(--red); }
 
+.location-panel { margin-top: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); box-shadow: 0 3px 10px rgb(38 37 54 / 6%); overflow: hidden; }
+.location-heading { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 18px; padding: 11px 16px; background: var(--ink); }
+.location-heading h2 { margin: 0; color: #fff; font-size: 18px; font-weight: 500; letter-spacing: -.02em; }
+.location-heading p { margin: 5px 0 0; color: #c7c7d0; font-size: 12px; }
+.location-body { display: grid; min-height: 370px; grid-template-columns: minmax(0, 1fr) 290px; }
+.map-frame { position: relative; min-width: 0; min-height: 370px; border-right: 1px solid var(--line); background: var(--mint-soft); overflow: hidden; }
+.map-frame iframe { display: block; width: 100%; height: 100%; min-height: 370px; border: 0; filter: saturate(.82) contrast(.98); }
+.map-fix { position: absolute; top: 15px; right: 15px; width: 12px; height: 12px; border: 3px solid #fff; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 7px rgb(102 189 120 / 22%); pointer-events: none; animation: gpsPulse 2s ease-out infinite; }
+.map-empty { display: grid; min-height: 370px; place-content: center; justify-items: center; padding: 36px; border-right: 1px solid var(--line); background-color: var(--mint-soft); background-image: linear-gradient(rgb(69 169 159 / 10%) 1px, transparent 1px), linear-gradient(90deg, rgb(69 169 159 / 10%) 1px, transparent 1px); background-size: 32px 32px; text-align: center; }
+.map-empty strong { margin-top: 20px; color: var(--text); font-size: 18px; font-weight: 500; }
+.map-empty p { max-width: 430px; margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.gps-orbit { position: relative; width: 74px; height: 74px; border: 1px solid var(--mint); border-radius: 50%; }
+.gps-orbit::before, .gps-orbit::after { position: absolute; inset: 10px -9px; border: 1px solid rgb(69 169 159 / 45%); border-radius: 50%; content: ""; transform: rotate(52deg); }
+.gps-orbit::after { transform: rotate(-52deg); }
+.gps-orbit span { position: absolute; inset: 26px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 7px rgb(69 169 159 / 15%); }
+.coordinate-panel { display: flex; min-width: 0; flex-direction: column; padding: 28px 24px 22px; background: #f8faf9; }
+.coordinate-label { margin-bottom: 7px; color: var(--muted); font-size: 12px; }
+.coordinate-panel > strong { margin-bottom: 25px; color: var(--text); font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: clamp(18px, 2vw, 24px); font-weight: 700; line-height: 1; overflow-wrap: anywhere; }
+.location-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.location-meta b { color: var(--text); font-weight: 500; text-align: right; }
+.coordinate-panel a { margin-top: 18px; padding: 11px 13px; border: 1px solid var(--mint); border-radius: 6px; color: #2e8179; font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; }
+.coordinate-panel a:hover { background: var(--mint-soft); }
+.coordinate-panel a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
 .workspace { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 14px; margin-top: 14px; }
 .overview-layout > .workspace .module:first-child { grid-row: 2; grid-column: 4; }
 .overview-layout > .workspace .module:last-child { grid-row: 3; grid-column: 4; }
@@ -686,6 +844,21 @@ export default {
 .tag.ok { border-color: #5c9b6a; color: #a8e5b3; }
 .tag.warn, .tag.pending { border-color: #967638; color: #ffd68a; }
 .tag.critical, .tag.failed { border-color: #9b4b58; color: #ff9eaa; }
+.environment-panel { margin: 3px 0 14px; border: 1px solid var(--line); border-radius: 6px; background: #f8faf9; overflow: hidden; }
+.environment-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-bottom: 1px solid var(--line); }
+.environment-header strong { color: var(--text); font-size: 13px; font-weight: 700; }
+.environment-header span { color: var(--muted); font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 10px; text-align: right; }
+.environment-readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.environment-reading { min-width: 0; padding: 13px 11px 12px; }
+.environment-reading + .environment-reading { border-left: 1px solid var(--line); }
+.environment-label { display: block; color: var(--muted); font-size: 11px; }
+.environment-reading > strong { display: flex; align-items: baseline; gap: 3px; margin-top: 7px; color: var(--text); font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: clamp(22px, 2.2vw, 29px); font-weight: 700; line-height: 1; }
+.environment-reading > strong small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.environment-scale { height: 4px; margin-top: 11px; border-radius: 2px; background: #e2e8e7; overflow: hidden; }
+.environment-scale span { display: block; height: 100%; border-radius: inherit; background: var(--coral); transition: width .3s ease; }
+.humidity-reading .environment-scale span { background: var(--cyan); }
+.environment-panel > p { margin: 0; padding: 9px 11px; border-top: 1px solid #efd9b0; background: #fff8eb; color: #795c28; font-size: 11px; line-height: 1.4; }
+.environment-panel.unavailable .environment-reading { opacity: .55; }
 .data-list { display: flex; flex-direction: column; }
 .data-list > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 45px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .data-list > div:last-child { border-bottom: 0; }
@@ -736,6 +909,10 @@ export default {
   50% { opacity: .3; }
 }
 
+@keyframes gpsPulse {
+  70%, 100% { box-shadow: 0 0 0 15px rgb(102 189 120 / 0%); }
+}
+
 @media (max-width: 1050px) {
   .overview-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .battery-instrument { grid-row: 1; grid-column: 1; }
@@ -745,10 +922,17 @@ export default {
   .vehicle-map { grid-row: 3; grid-column: 1 / -1; }
   .overview-layout > .workspace .module:first-child { grid-row: 4; grid-column: 1; }
   .overview-layout > .workspace .module:last-child { grid-row: 4; grid-column: 2; }
+  .light-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .command-space { grid-template-columns: 1fr; }
+  .location-body { grid-template-columns: 1fr; }
+  .map-frame, .map-empty { min-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .map-frame iframe { min-height: 320px; }
+  .coordinate-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 18px; }
+  .coordinate-panel > strong { margin-bottom: 10px; text-align: right; }
+  .location-meta, .coordinate-panel a { grid-column: 1 / -1; }
 }
 
 @media (max-width: 700px) {
@@ -781,6 +965,7 @@ export default {
 
 @media (prefers-reduced-motion: reduce) {
   .button { transition: none; }
-  .range-zone, .wheels, .car-shell, .parking-lighting.active .vehicle-light { animation: none; }
+  .environment-scale span { transition: none; }
+  .range-zone, .wheels, .car-shell, .indicator-lighting.active .vehicle-light, .map-fix { animation: none; }
 }
 </style>
