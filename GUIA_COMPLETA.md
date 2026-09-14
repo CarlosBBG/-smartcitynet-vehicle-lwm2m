@@ -13,7 +13,9 @@ publique credenciales reales.
 La versión 1 permite:
 
 - operar el vehículo localmente mediante Bluetooth;
-- leer dos sensores ultrasónicos y un MPU6050;
+- leer dos sensores ultrasónicos, un MPU6050 y un DHT11;
+- mostrar la ubicación de un GPS GY-GPS6MV2 en la Heltec, Leshan y Node-RED;
+- detener y bloquear el vehículo mediante un botón de pánico local;
 - detectar obstáculos, colisión, inclinación, curvas y pendientes;
 - controlar motores, velocidad, buzzer y luces;
 - unirse a TTN por OTAA en `US915 / FSB2`;
@@ -21,7 +23,7 @@ La versión 1 permite:
 - recibir comandos administrativos en `FPort 11`;
 - cambiar el intervalo de transmisión entre 15 y 86400 segundos;
 - activar una alerta remota que detiene y bloquea los motores;
-- encender y apagar las luces frontal, trasera y de parqueo;
+- encender y apagar las luces frontal, trasera, parqueo y direccionales;
 - persistir el estado del dispositivo y las operaciones en SQLite;
 - exponer el vehículo en Leshan como `SmartCityNet Vehicle Management v1.0`;
 - visualizar y administrar el dispositivo desde Node-RED;
@@ -212,6 +214,13 @@ modo local puede utilizar los valores en cero de `credentials.example.h`.
 - TTN debe registrar uplinks por `FPort 10`.
 - El monitor serie debe mostrar distancias, MPU, movimiento, velocidad y
   evento.
+- El OLED debe alternar la conducción con GPS y DHT11. La posición GPS, la
+  temperatura ambiente y la humedad se envían a TTN y deben aparecer en Leshan
+  y Node-RED.
+- El GY-GPS6MV2 trabaja a 9600 baudios: TX del GPS va a GPIO34 y su entrada RX
+  queda sin conectar. GPIO35 permanece libre para no activar el LED integrado.
+- Una pulsación del botón en GPIO36 debe detener y bloquear los motores; una
+  segunda pulsación debe liberar el bloqueo sin reanudar el movimiento.
 - Con un objeto a menos de 30 cm, el sensor frontal debe impedir únicamente el
   avance y el trasero únicamente la reversa. Los giros sobre el eje y el
   movimiento en sentido contrario deben continuar disponibles.
@@ -223,7 +232,7 @@ modo local puede utilizar los valores en cero de `credentials.example.h`.
 - Los motores pueden tener fuente independiente, pero todas las tierras deben
   compartir GND.
 
-GPIO1 se emplea para la luz de parqueo en este montaje, por lo que la versión 1
+GPIO1 se emplea para una luz de parqueo en este montaje, por lo que la versión 1
 no ofrece una medición fiable de batería y puede reportar `0 mV`.
 
 ## 7. Instalar los servicios locales
@@ -366,6 +375,14 @@ mismo endpoint.
 | `/32769/0/23` | Front Light | RW | Heltec/Bridge |
 | `/32769/0/24` | Rear Light | RW | Heltec/Bridge |
 | `/32769/0/25` | Parking Lights | RW | Heltec/Bridge |
+| `/32769/0/26` | Latitude | R | GPS |
+| `/32769/0/27` | Longitude | R | GPS |
+| `/32769/0/28` | GPS Available | R | Heltec |
+| `/32769/0/29` | Ambient Temperature | R | DHT11 |
+| `/32769/0/30` | Relative Humidity | R | DHT11 |
+| `/32769/0/31` | DHT Available | R | Heltec |
+| `/32769/0/32` | Left Turn Indicator | RW | Heltec/Bridge |
+| `/32769/0/33` | Right Turn Indicator | RW | Heltec/Bridge |
 
 El ID `32769` es provisional para laboratorio; no representa una asignación
 oficial de OMNA para un producto interoperable.
@@ -378,15 +395,17 @@ Todos los enteros multibyte usan *big-endian*.
 |---|---:|---:|---:|---|
 | Uplink | 10 | `0x01` | 15 B | Telemetría administrativa heredada |
 | Uplink | 10 | `0x02` | 8 B | ACK de comando |
-| Uplink | 10 | `0x03` | 27 B | Telemetría completa del vehículo |
+| Uplink | 10 | `0x03` | 27, 36 o 41 B | Telemetría vehicular; extensiones GPS y DHT11 |
 | Downlink | 11 | `0x10` | 7 B | Cambiar intervalo |
 | Downlink | 11 | `0x11` | 4 B | Activar/desactivar alerta |
 | Downlink | 11 | `0x12` | 5 B | Controlar una luz |
 
-La trama vehicular incluye movimiento, velocidad, distancias, pitch, roll,
-temperatura, flags de actuadores y eventos, contador, intervalo, batería y el
-resultado del último comando. Los IDs de luz son `0=frontal`, `1=trasera` y
-`2=parqueo`.
+La trama vehicular de 41 bytes incluye movimiento, velocidad, distancias,
+pitch, roll, temperatura del MPU6050, flags, contador, intervalo, batería,
+resultado del último comando, GPS, temperatura ambiente y humedad. El Bridge
+conserva compatibilidad con las tramas anteriores de 27 y 36 bytes. Los IDs de
+luz son `0=frontal`, `1=trasera`, `2=parqueo`, `3=direccional izquierda` y
+`4=direccional derecha`.
 
 Estados de respuesta del firmware:
 
@@ -467,8 +486,9 @@ curl -X PUT \
 
 ### Controlar luces
 
-Este ejemplo enciende la luz frontal. Use el recurso `24` para la trasera y
-`25` para parqueo; envíe `false` para apagar.
+Este ejemplo enciende la luz frontal. Use `24` para la trasera, `25` para
+parqueo, `32` para la direccional izquierda y `33` para la derecha; envíe
+`false` para apagar.
 
 ```bash
 curl -X PUT \
@@ -640,12 +660,12 @@ añada autenticación, HTTPS, reglas de firewall y control de acceso.
 - [ ] El repositorio no contiene secretos ni bases de datos locales.
 - [ ] Las plantillas `credentials.example.h` y `.env.example` usan marcadores.
 - [ ] Ambos sketches Arduino compilan.
-- [ ] Las 16 pruebas del Bridge finalizan correctamente.
+- [ ] Las 24 pruebas del Bridge finalizan correctamente.
 - [ ] La Heltec realiza JOIN y TTN recibe `FPort 10`.
 - [ ] El Bridge muestra el Device ID esperado.
 - [ ] El cliente aparece en Leshan con los objetos `/3/0` y `/32769/0`.
 - [ ] El dashboard carga en escritorio y móvil sin superposiciones.
-- [ ] Intervalo, alerta y las tres luces llegan a `acknowledged`.
+- [ ] Intervalo, alerta y las cinco funciones de luz llegan a `acknowledged`.
 - [ ] El estado físico coincide con Leshan y Node-RED.
 - [ ] README, guía y capturas corresponden a esta versión.
 

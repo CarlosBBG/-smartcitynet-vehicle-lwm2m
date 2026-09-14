@@ -7,8 +7,8 @@ Heltec V3 <--LoRaWAN--> TTN <--MQTT/TLS--> Bridge <--HTTP--> cliente virtual <--
 ```
 
 La versión 1 recibe los uplinks de TTN, conserva un *device twin* local y permite
-cambiar el intervalo de transmisión, la alerta remota y las tres luces del
-vehículo. El Bridge genera el downlink, lo deja en la cola de TTN y registra su
+cambiar el intervalo de transmisión, la alerta remota y las cinco funciones de
+iluminación del vehículo. El Bridge genera el downlink, lo deja en la cola de TTN y registra su
 estado hasta recibir el ACK de la Heltec.
 
 No se encapsula una trama CoAP completa en LoRaWAN. El protocolo binario pequeño
@@ -67,7 +67,8 @@ curl -X POST http://127.0.0.1:8081/devices/DEVICE_ID/alert \
   -d '{"value":true}'
 ```
 
-Las luces se administran con `front`, `rear` o `parking`. Por ejemplo:
+Las luces se administran con `front`, `rear`, `parking`, `left` o `right`. Por
+ejemplo:
 
 ```bash
 curl -X POST http://127.0.0.1:8081/devices/DEVICE_ID/lights/front \
@@ -97,7 +98,7 @@ Todos los enteros multibyte usan orden de red (*big-endian*).
 |---|---:|---:|---|
 | Uplink | 10 | `0x01` | versión, tipo, flags, último txId/estado, contador, intervalo, batería mV |
 | Uplink | 10 | `0x02` | versión, tipo, txId, estado, intervalo aplicado |
-| Uplink | 10 | `0x03` | telemetría vehicular del TIC y estado administrativo |
+| Uplink | 10 | `0x03` | telemetría vehicular; 41 bytes con GPS y DHT11, compatible con 27 y 36 bytes |
 | Downlink | 11 | `0x10` | versión, comando, txId, nuevo intervalo en segundos |
 | Downlink | 11 | `0x11` | versión, comando, txId, alerta remota 0/1 |
 | Downlink | 11 | `0x12` | versión, comando, txId, luz 0..2, estado 0/1 |

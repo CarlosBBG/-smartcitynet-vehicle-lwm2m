@@ -32,9 +32,12 @@ LoRaWAN.
 
 - Unión OTAA en `US915 / FSB2` y telemetría vehicular por TTN.
 - Control local mediante Bluetooth: movimiento, velocidad, luces y bocina.
-- Lectura de dos HC-SR04 y un MPU6050, con detección local de eventos.
-- Control remoto del intervalo, alerta/bloqueo y luces frontal, trasera y de
-  parqueo.
+- Lectura de dos HC-SR04, MPU6050 y DHT11, con temperatura y humedad visibles
+  en Leshan y Node-RED.
+- Ubicación mediante GY-GPS6MV2, visible en Leshan y en el mapa de Node-RED.
+- Parada enclavada mediante botón de pánico local.
+- Control remoto del intervalo, alerta/bloqueo, luces principales, parqueo y
+  direccionales izquierda/derecha.
 - Persistencia del *device twin* y de las operaciones en SQLite.
 - Confirmación de extremo a extremo mediante `txId` y ACK de aplicación.
 - Objeto `SmartCityNet Vehicle Management v1.0` visible en la misma sesión del
