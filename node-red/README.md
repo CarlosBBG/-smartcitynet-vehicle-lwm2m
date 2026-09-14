@@ -55,6 +55,7 @@ la terminal donde se está ejecutando.
 - Temperatura ambiente y humedad relativa del DHT11 con indicador de validez.
 - Mapa OpenStreetMap, latitud, longitud y estado de la posición GPS.
 - Eventos detectados y disponibilidad del MPU6050.
+- Alerta crítica del botón físico de pánico y estado de bloqueo de los motores.
 - Estado actual de la alerta remota.
 - Última operación administrativa y su ciclo hasta `acknowledged`.
 - Activación/desactivación de la alarma mediante `/32769/0/11`.

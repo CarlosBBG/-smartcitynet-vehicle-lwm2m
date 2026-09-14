@@ -24,6 +24,15 @@
       Esperando datos del Bridge. Comprueba que DEVICE_ID coincida con el vehículo.
     </div>
 
+    <section v-if="panicActive" class="panic-alert" role="alert" aria-live="assertive">
+      <span class="panic-mark" aria-hidden="true">!</span>
+      <div>
+        <strong>Botón de pánico activado</strong>
+        <p>El vehículo está detenido y los motores permanecen bloqueados.</p>
+      </div>
+      <span class="panic-time">Recibido {{ dataAgeText.toLowerCase() }}</span>
+    </section>
+
     <div class="overview-layout">
     <section class="cockpit" aria-label="Estado visual del vehículo">
       <div class="instrument-stack left-stack">
@@ -76,7 +85,7 @@
             <rect x="68" y="220" width="18" height="48" rx="7" />
             <rect x="194" y="220" width="18" height="48" rx="7" />
           </g>
-          <g :class="['car-shell', alertActive ? 'locked' : 'ready']">
+          <g :class="['car-shell', vehicleLocked ? 'locked' : 'ready']">
             <g :class="['light-group', 'front-lighting', { active: frontLightOn }]">
               <path class="light-beam" d="M106 108 L68 59 Q88 46 113 58 Z" />
               <path class="light-beam" d="M174 108 L212 59 Q192 46 167 58 Z" />
@@ -143,12 +152,12 @@
           </div>
         </article>
 
-        <article :class="['instrument', 'lock-instrument', alertActive ? 'danger' : 'safe']">
-          <span class="lock-symbol" aria-hidden="true">{{ alertActive ? '×' : '✓' }}</span>
+        <article :class="['instrument', 'lock-instrument', vehicleLocked ? 'danger' : 'safe']">
+          <span class="lock-symbol" aria-hidden="true">{{ vehicleLocked ? '×' : '✓' }}</span>
           <div class="instrument-copy">
-            <span class="metric-label">Bloqueo remoto</span>
-            <strong>{{ alertActive ? 'Activo' : 'Libre' }}</strong>
-            <small>Motores {{ alertActive ? 'bloqueados' : 'habilitados' }}</small>
+            <span class="metric-label">Seguridad</span>
+            <strong>{{ panicActive ? 'Pánico local' : (alertActive ? 'Bloqueo remoto' : 'Libre') }}</strong>
+            <small>Motores {{ vehicleLocked ? 'bloqueados' : 'habilitados' }}</small>
           </div>
         </article>
       </div>
@@ -368,6 +377,8 @@ export default {
     state () { return this.device?.state || {} },
     events () { return Array.isArray(this.state.events) ? this.state.events : [] },
     alertActive () { return this.state.remote_alert_active === true },
+    panicActive () { return this.state.local_panic_active === true },
+    vehicleLocked () { return this.alertActive || this.panicActive },
     frontLightOn () { return this.booleanState('front_light_on', 0) },
     rearLightOn () { return this.booleanState('rear_light_on', 4) },
     parkingLightsOn () { return this.booleanState('parking_lights_on', 3) },
@@ -485,7 +496,7 @@ export default {
     },
     eventSeverity () {
       const values = this.events.map(value => String(value).toLowerCase())
-      if (values.some(value => ['collision', 'colision', 'rollover', 'volcamiento'].includes(value))) return 'critical'
+      if (values.some(value => ['local_panic', 'local-panic', 'collision', 'colision', 'rollover', 'volcamiento'].includes(value))) return 'critical'
       if (values.length > 0) return 'warn'
       return 'ok'
     },
@@ -632,7 +643,8 @@ export default {
       const labels = {
         normal: 'Normal', collision: 'Colisión', colision: 'Colisión', obstacle: 'Obstáculo', obstaculo: 'Obstáculo',
         rollover: 'Volcamiento', volcamiento: 'Volcamiento', 'right-turn': 'Curva derecha', 'curva-derecha': 'Curva derecha',
-        'left-turn': 'Curva izquierda', 'curva-izquierda': 'Curva izquierda', ascent: 'Subida', subida: 'Subida', descent: 'Bajada', bajada: 'Bajada'
+        'left-turn': 'Curva izquierda', 'curva-izquierda': 'Curva izquierda', ascent: 'Subida', subida: 'Subida', descent: 'Bajada', bajada: 'Bajada',
+        'local-panic': 'Pánico local', 'remote-alert': 'Alerta remota'
       }
       return labels[key] || raw
     },
@@ -728,6 +740,11 @@ export default {
 .connection small { margin-top: 3px; color: var(--muted); font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 12px; }
 .notice { margin-top: 14px; padding: 11px 14px; border: 1px solid #b9ddd6; border-left: 4px solid var(--mint); border-radius: 5px; background: #eaf6f3; color: #35645e; font-size: 13px; line-height: 1.5; }
 .notice.warning { border-color: #efd9b0; border-left-color: var(--amber); background: #fff8eb; color: #795c28; }
+.panic-alert { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-top: 14px; padding: 13px 15px; border: 1px solid #d95868; border-left-width: 6px; border-radius: 6px; background: #fff0f2; color: #762d38; box-shadow: 0 4px 12px rgb(217 88 104 / 12%); }
+.panic-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--red); color: #fff; font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 20px; font-weight: 700; }
+.panic-alert strong { display: block; color: #762d38; font-size: 15px; font-weight: 700; }
+.panic-alert p { margin: 3px 0 0; color: #91434e; font-size: 12px; line-height: 1.45; }
+.panic-time { color: #91434e; font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 11px; text-align: right; }
 
 .metric-label { display: block; color: var(--muted); font-size: 13px; font-weight: 500; }
 
@@ -939,6 +956,8 @@ export default {
   .dashboard-shell { padding: 18px; }
   .masthead { align-items: flex-start; flex-direction: column; gap: 18px; }
   .connection { width: 100%; }
+  .panic-alert { grid-template-columns: auto minmax(0, 1fr); }
+  .panic-time { grid-column: 2; text-align: left; }
   .overview-layout { grid-template-columns: 1fr; }
   .vehicle-map { grid-row: 1; grid-column: 1; }
   .battery-instrument { grid-row: 2; grid-column: 1; }

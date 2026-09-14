@@ -101,7 +101,11 @@ Todos los enteros multibyte usan orden de red (*big-endian*).
 | Uplink | 10 | `0x03` | telemetría vehicular; 41 bytes con GPS y DHT11, compatible con 27 y 36 bytes |
 | Downlink | 11 | `0x10` | versión, comando, txId, nuevo intervalo en segundos |
 | Downlink | 11 | `0x11` | versión, comando, txId, alerta remota 0/1 |
-| Downlink | 11 | `0x12` | versión, comando, txId, luz 0..2, estado 0/1 |
+| Downlink | 11 | `0x12` | versión, comando, txId, luz 0..4, estado 0/1 |
+
+En la telemetría vehicular, el bit 5 de `flags` indica que el botón físico de
+pánico está enclavado. El Bridge lo expone como `local_panic_active`, lo añade
+a `events` y le da prioridad en `event_summary`.
 
 El intervalo aceptado está entre 15 y 86400 segundos. La Heltec lo persiste en
 NVS, por lo que sobrevive a reinicios.

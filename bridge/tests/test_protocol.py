@@ -109,6 +109,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(message.left_indicator_on)
         self.assertTrue(message.right_indicator_on)
 
+    def test_decode_vehicle_local_panic(self):
+        payload = bytearray.fromhex(
+            "01 03 07 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"
+        )
+        payload[2] |= 0x20
+
+        message = decode_uplink(bytes(payload))
+
+        self.assertTrue(message.local_panic_active)
+        self.assertIn("local_panic", message.events)
+        self.assertEqual(message.event_summary, "local_panic")
+        self.assertTrue(message.to_dict()["local_panic_active"])
+
     def test_reject_vehicle_bad_gps_checksum(self):
         legacy = bytes.fromhex(
             "01 03 0F 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 0F78"

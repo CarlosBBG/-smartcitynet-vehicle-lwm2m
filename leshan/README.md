@@ -149,6 +149,7 @@ curl -X PUT \
 | `/32769/0/31` | DHT Available | R | Heltec |
 | `/32769/0/32` | Left Turn Indicator | RW | Heltec/Bridge |
 | `/32769/0/33` | Right Turn Indicator | RW | Heltec/Bridge |
+| `/32769/0/34` | Local Panic | R | Heltec |
 
 El identificador 32769 es provisional para laboratorio. El rango 32769–42768
 requiere reserva empresarial en OMNA y no debe presentarse como una asignación

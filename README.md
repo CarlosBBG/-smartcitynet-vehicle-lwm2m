@@ -35,7 +35,8 @@ LoRaWAN.
 - Lectura de dos HC-SR04, MPU6050 y DHT11, con temperatura y humedad visibles
   en Leshan y Node-RED.
 - Ubicación mediante GY-GPS6MV2, visible en Leshan y en el mapa de Node-RED.
-- Parada enclavada mediante botón de pánico local.
+- Parada enclavada mediante botón de pánico local, reportada a Leshan y al
+  dashboard mediante un uplink prioritario.
 - Control remoto del intervalo, alerta/bloqueo, luces principales, parqueo y
   direccionales izquierda/derecha.
 - Persistencia del *device twin* y de las operaciones en SQLite.

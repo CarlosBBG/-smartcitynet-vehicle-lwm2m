@@ -142,11 +142,15 @@ class VehicleTelemetry:
 
     @property
     def events(self) -> list[str]:
-        return [name for bit, name in EVENT_NAMES.items() if self.event_flags & (1 << bit)]
+        events = [name for bit, name in EVENT_NAMES.items() if self.event_flags & (1 << bit)]
+        if self.local_panic_active:
+            events.insert(0, "local_panic")
+        return events
 
     @property
     def event_summary(self) -> str:
         priority = (
+            "local_panic",
             "remote_alert",
             "collision",
             "rollover",
@@ -166,6 +170,10 @@ class VehicleTelemetry:
     @property
     def remote_alert_active(self) -> bool:
         return bool(self.flags & 0x02)
+
+    @property
+    def local_panic_active(self) -> bool:
+        return bool(self.flags & 0x20)
 
     @property
     def mpu_available(self) -> bool:
@@ -218,6 +226,7 @@ class VehicleTelemetry:
                 "battery_percent": self.battery_percent,
                 "lorawan_session_active": bool(self.flags & 0x01),
                 "remote_alert_active": self.remote_alert_active,
+                "local_panic_active": self.local_panic_active,
                 "mpu_available": self.mpu_available,
                 "gps_available": self.gps_available,
                 "dht_available": self.dht_available,

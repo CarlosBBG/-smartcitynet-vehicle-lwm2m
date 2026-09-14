@@ -84,7 +84,7 @@ La nueva distribución corresponde al esquema `DistribucionPines`:
 | Direccional/parqueo izquierdo | señal | 1 |
 | Direccional/parqueo derecho | señal | 38 |
 | DHT11 | datos | 33 |
-| Botón de pánico | entrada a GND | 36 |
+| Botón de pánico | entrada a GND | 47 |
 | HC-06 | TX del HC-06 → RX Heltec | 19 |
 | HC-06 | RX del HC-06 ← TX Heltec | 20 |
 | GY-GPS6MV2 | TX del GPS → RX Heltec | 34 |
@@ -99,9 +99,11 @@ I2C para evitar el conflicto.
 La posición GPS y la medición ambiental se muestran en una vista alternada del
 OLED. Latitud, longitud, temperatura ambiente, humedad y sus indicadores de
 validez también se envían por LoRaWAN para mostrarse en Leshan y Node-RED.
-El botón de pánico se conecta entre GPIO36 y GND usando la resistencia pull-up
+El botón de pánico se conecta entre GPIO47 y GND usando la resistencia pull-up
 interna: una pulsación bloquea motores y activa el buzzer; la siguiente lo
-libera, pero no reanuda el movimiento anterior.
+libera, pero no reanuda el movimiento anterior. Cada cambio programa un uplink
+prioritario para reflejar la alerta en Leshan y Node-RED sin esperar todo el
+intervalo normal de telemetría.
 
 GPIO1 también es la entrada ADC de batería de la Heltec V3. Como la PCB del TIC
 lo utiliza para la luz de parqueo, el sketch no intenta medir la batería y
@@ -213,7 +215,7 @@ El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 41 bytes. Incluye:
 - flags de actuadores y eventos;
 - contador y checksum XOR del bloque TIC;
 - intervalo administrativo y batería;
-- último txId/estado, alerta remota y disponibilidad del MPU6050.
+- último txId/estado, alerta remota, pánico local y disponibilidad del MPU6050.
 - latitud y longitud escaladas a `10^7`, indicador de posición válida y un
   checksum específico para el bloque GPS.
 - temperatura ambiente y humedad relativa en décimas, disponibilidad del DHT11
@@ -322,6 +324,9 @@ Las mediciones del DHT11 se publican como recursos de solo lectura:
 | `/32769/0/29` | temperatura ambiente |
 | `/32769/0/30` | humedad relativa |
 | `/32769/0/31` | lectura DHT11 disponible |
+
+El estado enclavado del botón físico se publica en `/32769/0/34` como
+**Local Panic**, un recurso booleano de solo lectura.
 
 Para encender la luz frontal desde la API de Leshan:
 
