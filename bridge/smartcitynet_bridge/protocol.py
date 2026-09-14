@@ -29,6 +29,8 @@ LIGHT_IDS = {
     "front": 0,
     "rear": 1,
     "parking": 2,
+    "left": 3,
+    "right": 4,
 }
 
 COMMAND_STATUS = {
@@ -125,6 +127,10 @@ class VehicleTelemetry:
     uplink_counter: int
     transmission_interval_seconds: int
     battery_mv: int
+    latitude: float | None = None
+    longitude: float | None = None
+    ambient_temperature_c: float | None = None
+    ambient_humidity_percent: float | None = None
 
     @property
     def command_status_name(self) -> str:
@@ -166,6 +172,22 @@ class VehicleTelemetry:
         return bool(self.flags & 0x04)
 
     @property
+    def gps_available(self) -> bool:
+        return (
+            bool(self.flags & 0x08)
+            and self.latitude is not None
+            and self.longitude is not None
+        )
+
+    @property
+    def dht_available(self) -> bool:
+        return (
+            bool(self.flags & 0x10)
+            and self.ambient_temperature_c is not None
+            and self.ambient_humidity_percent is not None
+        )
+
+    @property
     def front_light_on(self) -> bool:
         return bool(self.actuator_flags & (1 << 0))
 
@@ -176,6 +198,14 @@ class VehicleTelemetry:
     @property
     def rear_light_on(self) -> bool:
         return bool(self.actuator_flags & (1 << 4))
+
+    @property
+    def left_indicator_on(self) -> bool:
+        return bool(self.actuator_flags & (1 << 6))
+
+    @property
+    def right_indicator_on(self) -> bool:
+        return bool(self.actuator_flags & (1 << 7))
 
     def to_dict(self) -> dict:
         result = asdict(self)
@@ -189,9 +219,13 @@ class VehicleTelemetry:
                 "lorawan_session_active": bool(self.flags & 0x01),
                 "remote_alert_active": self.remote_alert_active,
                 "mpu_available": self.mpu_available,
+                "gps_available": self.gps_available,
+                "dht_available": self.dht_available,
                 "front_light_on": self.front_light_on,
                 "rear_light_on": self.rear_light_on,
                 "parking_lights_on": self.parking_lights_on,
+                "left_indicator_on": self.left_indicator_on,
+                "right_indicator_on": self.right_indicator_on,
             }
         )
         return result
@@ -222,8 +256,8 @@ def decode_uplink(payload: bytes) -> Uplink:
         return CommandAck(tx_id, status, interval)
 
     if message_type == MSG_VEHICLE_TELEMETRY:
-        if len(payload) != 27:
-            raise ProtocolError("telemetria vehicular debe contener 27 bytes")
+        if len(payload) not in (27, 36, 41):
+            raise ProtocolError("telemetria vehicular debe contener 27, 36 o 41 bytes")
         checksum = 0
         for value in payload[5:20]:
             checksum ^= value
@@ -250,7 +284,41 @@ def decode_uplink(payload: bytes) -> Uplink:
             _,
             interval,
             battery_mv,
-        ) = struct.unpack(">BBBBBBBHHhhhBBBBIH", payload)
+        ) = struct.unpack(">BBBBBBBHHhhhBBBBIH", payload[:27])
+        latitude = None
+        longitude = None
+        if len(payload) >= 36:
+            gps_checksum = 0
+            for value in payload[27:35]:
+                gps_checksum ^= value
+            if gps_checksum != payload[35]:
+                raise ProtocolError(
+                    f"checksum GPS invalido: recibido 0x{payload[35]:02x}, "
+                    f"calculado 0x{gps_checksum:02x}"
+                )
+            latitude_raw, longitude_raw = struct.unpack(">ii", payload[27:35])
+            if flags & 0x08:
+                latitude = latitude_raw / 10_000_000.0
+                longitude = longitude_raw / 10_000_000.0
+
+        ambient_temperature = None
+        ambient_humidity = None
+        if len(payload) == 41:
+            dht_checksum = 0
+            for value in payload[36:40]:
+                dht_checksum ^= value
+            if dht_checksum != payload[40]:
+                raise ProtocolError(
+                    f"checksum DHT invalido: recibido 0x{payload[40]:02x}, "
+                    f"calculado 0x{dht_checksum:02x}"
+                )
+            temperature_raw, humidity_raw = struct.unpack(">hH", payload[36:40])
+            if flags & 0x10:
+                if humidity_raw > 1000:
+                    raise ProtocolError("humedad DHT fuera de rango")
+                ambient_temperature = temperature_raw / 10.0
+                ambient_humidity = humidity_raw / 10.0
+
         return VehicleTelemetry(
             flags=flags,
             last_transaction_id=tx_id,
@@ -267,6 +335,10 @@ def decode_uplink(payload: bytes) -> Uplink:
             uplink_counter=counter,
             transmission_interval_seconds=interval,
             battery_mv=battery_mv,
+            latitude=latitude,
+            longitude=longitude,
+            ambient_temperature_c=ambient_temperature,
+            ambient_humidity_percent=ambient_humidity,
         )
 
     raise ProtocolError(f"tipo de uplink no soportado: 0x{message_type:02x}")
@@ -296,7 +368,10 @@ def encode_light_command(transaction_id: int, light_id: int, active: bool) -> by
     if not 0 <= transaction_id <= 255:
         raise ProtocolError("transaction_id debe estar entre 0 y 255")
     if light_id not in LIGHT_IDS.values():
-        raise ProtocolError("light_id debe ser 0 (frontal), 1 (trasera) o 2 (parqueo)")
+        raise ProtocolError(
+            "light_id debe ser 0 (frontal), 1 (trasera), 2 (parqueo), "
+            "3 (direccional izquierda) o 4 (direccional derecha)"
+        )
     return struct.pack(
         ">BBBBB", VERSION, CMD_SET_VEHICLE_LIGHT, transaction_id, light_id, int(active)
     )
