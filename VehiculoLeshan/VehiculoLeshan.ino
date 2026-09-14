@@ -64,7 +64,7 @@ const uint8_t PIN_PARQUEO_IZQUIERDO = 1;
 const uint8_t PIN_PARQUEO_DERECHO = 38;
 
 const uint8_t PIN_DHT11 = 33;
-const uint8_t PIN_BOTON_PANICO = 36;
+const uint8_t PIN_BOTON_PANICO = 47;
 
 // UART1 para HC-06. Conectar HC-06 TX -> GPIO19 y HC-06 RX -> GPIO20.
 const uint8_t PIN_BT_RX = 19;
@@ -258,6 +258,7 @@ bool direccionalIzquierda = false;
 bool direccionalDerecha = false;
 bool bocina = false;
 bool panicoActivo = false;
+bool telemetriaPanicoPendiente = false;
 
 // Mediciones ambientales y posicion que también viajan por telemetria.
 float temperaturaAmbiente = 0.0f;
@@ -428,6 +429,17 @@ void actualizarDht11()
   {
     temperaturaAmbiente = temperatura;
     humedadAmbiente = humedad;
+    // Telemetria de texto para la app Android por el enlace HC-06.
+    // Formato: @DHT,disponible,temperatura_C,humedad_porcentaje
+    bluetooth.printf(
+      "@DHT,1,%.1f,%.1f\n",
+      temperaturaAmbiente,
+      humedadAmbiente
+    );
+  }
+  else
+  {
+    bluetooth.print("@DHT,0,0,0\n");
   }
 }
 
@@ -1269,8 +1281,14 @@ void actualizarBotonPanico()
   // La primera pulsacion bloquea el vehiculo; la siguiente lo libera. Al
   // liberar nunca se reanuda el movimiento anterior.
   panicoActivo = !panicoActivo;
+  telemetriaPanicoPendiente = true;
   movimientoSolicitado = MOV_DETENIDO;
   detenerMotoresInmediato();
+  if (usarTTN && deviceState == DEVICE_STATE_SLEEP)
+  {
+    // Adelanta el uplink para informar el cambio sin esperar todo el intervalo.
+    LoRaWAN.cycle(1000UL);
+  }
   Serial.printf("[Panico] %s\r\n", panicoActivo ? "ACTIVADO" : "DESACTIVADO");
 }
 
@@ -1751,6 +1769,10 @@ void prepararTelemetria()
   {
     flags |= 1U << 4;
   }
+  if (panicoActivo)
+  {
+    flags |= 1U << 5;
+  }
 
   // Cabecera: version, tipo, flags, transaccion y resultado del comando.
   appData[0] = VERSION_PROTOCOLO;
@@ -1823,7 +1845,7 @@ void prepararTelemetria()
 void prepararEnvio()
 {
   const bool enviandoAck = ackPendientes > 0;
-  isTxConfirmed = enviandoAck;
+  isTxConfirmed = enviandoAck || telemetriaPanicoPendiente;
 
   if (enviandoAck)
   {
@@ -2131,7 +2153,7 @@ void setup()
     Serial.printf(" MPU6050: NO DISPONIBLE\r\n");
   }
   Serial.println(" GPS GY-GPS6MV2: TX del GPS -> GPIO34, 9600 baudios");
-  Serial.println(" DHT11: GPIO33 | Boton de panico: GPIO36");
+  Serial.println(" DHT11: GPIO33 | Boton de panico: GPIO47");
   Serial.println("========================================");
 }
 
@@ -2182,6 +2204,10 @@ void actualizarLoRa()
       );
 
       LoRaWAN.send();
+      if (appData[1] == MSG_TELEMETRIA)
+      {
+        telemetriaPanicoPendiente = false;
+      }
       deviceState = DEVICE_STATE_CYCLE;
       break;
     }
@@ -2196,6 +2222,11 @@ void actualizarLoRa()
           "[Gestion] Siguiente repeticion de ACK en %lu ms\r\n",
           (unsigned long)txDutyCycleTime
         );
+      }
+      else if (telemetriaPanicoPendiente)
+      {
+        txDutyCycleTime = 1000UL;
+        Serial.println("[Panico] Telemetria prioritaria programada");
       }
       else
       {
