@@ -51,14 +51,21 @@ la terminal donde se está ejecutando.
 
 - Estado de conexión y última comunicación.
 - Batería, RSSI, SNR, movimiento y velocidad.
-- Distancias frontal y trasera, pitch, roll y temperatura.
+- Distancias frontal y trasera, pitch, roll y temperatura interna del MPU6050.
+- Temperatura ambiente y humedad relativa del DHT11 con indicador de validez.
+- Mapa OpenStreetMap, latitud, longitud y estado de la posición GPS.
 - Eventos detectados y disponibilidad del MPU6050.
 - Estado actual de la alerta remota.
 - Última operación administrativa y su ciclo hasta `acknowledged`.
 - Activación/desactivación de la alarma mediante `/32769/0/11`.
 - Escritura del intervalo mediante `/32769/0/0`.
-- Control y confirmación de las luces frontal, trasera y de parqueo mediante
-  `/32769/0/23`, `/32769/0/24` y `/32769/0/25`.
+- Control y confirmación de las luces frontal, trasera, parqueo y direccionales
+  mediante `/32769/0/23`, `/32769/0/24`, `/32769/0/25`, `/32769/0/32` y
+  `/32769/0/33`.
+
+El mapa no requiere una API key. El navegador que abre el dashboard sí necesita
+acceso a `openstreetmap.org` para descargar la cartografía; las coordenadas
+siguen visibles aunque el mapa externo no pueda cargarse.
 
 Los controles piden confirmación antes de enviar una escritura. La aceptación
 HTTP/CoAP no implica que la Heltec ya aplicó el comando: el dashboard muestra la
