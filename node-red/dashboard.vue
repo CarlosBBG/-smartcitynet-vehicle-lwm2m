@@ -45,7 +45,8 @@
           </div>
           <div class="instrument-copy">
             <span class="metric-label">Energía</span>
-            <strong>{{ batteryAvailable ? `${stateNumber('battery_mv')} mV` : 'Sin lectura' }}</strong>
+            <strong>{{ batteryAvailable ? `${batteryVoltage} V` : 'Sin lectura' }}</strong>
+            <small v-if="batteryAvailable">Paquete 3S · {{ batteryPercent }} %</small>
           </div>
         </article>
 
@@ -442,6 +443,7 @@ export default {
     },
     batteryAvailable () { return this.stateNumber('battery_mv') > 0 },
     batteryPercent () { return Math.max(0, Math.min(100, this.stateNumber('battery_percent'))) },
+    batteryVoltage () { return this.formatNumber(this.stateNumber('battery_mv') / 1000, 2) },
     signalBars () {
       const rssi = Number(this.device?.rssi)
       if (!Number.isFinite(rssi)) return 0
