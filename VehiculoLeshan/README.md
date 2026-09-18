@@ -75,39 +75,40 @@ La nueva distribución corresponde al esquema `DistribucionPines`:
 | HC-SR04 frontal | Trigger | 46 |
 | HC-SR04 frontal | Echo | 45 |
 | HC-SR04 trasero | Trigger | 26 |
-| HC-SR04 trasero | Echo | 21 |
+| HC-SR04 trasero | Echo | 48 |
 | MPU6050 | SDA | 41 |
 | MPU6050 | SCL | 42 |
-| Buzzer | señal | 48 |
+| Buzzer | señal | 47 |
 | Luces frontales | señal común | 39 |
 | Luces traseras | señal común | 40 |
 | Direccional/parqueo izquierdo | señal | 1 |
 | Direccional/parqueo derecho | señal | 38 |
-| DHT11 | datos | 33 |
-| Botón de pánico | entrada a GND | 47 |
-| HC-06 | TX del HC-06 → RX Heltec | 19 |
-| HC-06 | RX del HC-06 ← TX Heltec | 20 |
-| GY-GPS6MV2 | TX del GPS → RX Heltec | 34 |
+| DHT11 | datos | 34 |
+| Botón de pánico | entrada a GND | 33 |
+| HC-06 | TX del HC-06 → RX Heltec | 20 |
+| HC-06 | RX del HC-06 ← TX Heltec | 21 |
+| GY-GPS6MV2 | TX del GPS → RX Heltec | 35 |
 | GY-GPS6MV2 | RX del GPS | Sin conectar |
+| Batería 3S | nodo del divisor 330 kΩ / 100 kΩ | 19 |
 
-GPIO19/20 utilizan UART1 y dejan GPIO43/44 exclusivamente para el monitor USB.
-El GPS utiliza UART2 a 9600 baudios únicamente para recepción en GPIO34.
-GPIO35 queda libre porque también gobierna el LED blanco incorporado.
+GPIO20/21 utilizan UART1 y dejan GPIO43/44 exclusivamente para el monitor USB.
+El GPS utiliza UART2 a 9600 baudios únicamente para recepción en GPIO35.
 El OLED usa su bus integrado en GPIO17/18; el MPU6050 utiliza un segundo bus
 I2C para evitar el conflicto.
 
 La posición GPS y la medición ambiental se muestran en una vista alternada del
 OLED. Latitud, longitud, temperatura ambiente, humedad y sus indicadores de
 validez también se envían por LoRaWAN para mostrarse en Leshan y Node-RED.
-El botón de pánico se conecta entre GPIO47 y GND usando la resistencia pull-up
+El botón de pánico se conecta entre GPIO33 y GND usando la resistencia pull-up
 interna: una pulsación bloquea motores y activa el buzzer; la siguiente lo
 libera, pero no reanuda el movimiento anterior. Cada cambio programa un uplink
 prioritario para reflejar la alerta en Leshan y Node-RED sin esperar todo el
 intervalo normal de telemetría.
 
-GPIO1 también es la entrada ADC de batería de la Heltec V3. Como la PCB del TIC
-lo utiliza para la luz de parqueo, el sketch no intenta medir la batería y
-reporta `0 mV` en ese campo para evitar lecturas falsas y conflictos eléctricos.
+GPIO19 recibe el punto medio del divisor 330 kΩ / 100 kΩ conectado al paquete
+de tres celdas Li-ion en serie. El firmware promedia 20 lecturas ADC, calcula
+el voltaje del paquete y el porcentaje por celda. Ambos valores se publican en
+la telemetría y se muestran en Leshan y Node-RED.
 
 ## MPU6050 montado verticalmente
 
@@ -123,8 +124,8 @@ detengan los motores.
 ### Precauciones eléctricas
 
 - Las entradas del ESP32-S3 son de 3,3 V. Los Echo del HC-SR04 pueden entregar
-  5 V: use un divisor resistivo o conversor de nivel antes de GPIO45 y GPIO21.
-- Conecte DATA del DHT11 a GPIO33. Si usa el sensor sin placa auxiliar, añada
+  5 V: use un divisor resistivo o conversor de nivel antes de GPIO45 y GPIO48.
+- Conecte DATA del DHT11 a GPIO34. Si usa el sensor sin placa auxiliar, añada
   una resistencia pull-up de 4,7–10 kΩ entre DATA y 3,3 V.
 - Retire los jumpers ENA/ENB del L298N para controlar velocidad por PWM.
 - Use una alimentación separada para los motores y una para lógica/sensores.
@@ -207,21 +208,21 @@ rechazan aunque el Bluetooth continúe conectado.
 
 ## Telemetría
 
-El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 41 bytes. Incluye:
+El uplink usa FPort 10, versión `0x01`, tipo `0x03` y 42 bytes. Incluye:
 
 - movimiento y velocidad;
 - distancias frontal y trasera;
 - Pitch, Roll y temperatura;
 - flags de actuadores y eventos;
 - contador y checksum XOR del bloque TIC;
-- intervalo administrativo y batería;
+- intervalo administrativo, voltaje de batería y porcentaje calculado para 3S;
 - último txId/estado, alerta remota, pánico local y disponibilidad del MPU6050.
 - latitud y longitud escaladas a `10^7`, indicador de posición válida y un
   checksum específico para el bloque GPS.
 - temperatura ambiente y humedad relativa en décimas, disponibilidad del DHT11
   y un checksum específico para el bloque ambiental.
 
-El Bridge sigue aceptando las tramas vehiculares anteriores de 27 y 36 bytes y
+El Bridge sigue aceptando las tramas vehiculares anteriores de 27, 36 y 41 bytes y
 el formato administrativo `0x01`, por lo que distintas revisiones pueden
 coexistir en la misma aplicación TTN.
 
