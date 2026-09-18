@@ -23,6 +23,8 @@
 #include <string.h>
 #include "credentials.h"
 
+struct MedicionBateria;
+
 // true: conexion a TTN. false: prueba local por USB y Bluetooth, sin radio.
 const bool usarTTN = true;
 
@@ -46,7 +48,7 @@ const uint8_t PIN_ENB = 2;
 const uint8_t PIN_TRIG_FRONTAL = 46;
 const uint8_t PIN_ECHO_FRONTAL = 45;
 const uint8_t PIN_TRIG_TRASERO = 26;
-const uint8_t PIN_ECHO_TRASERO = 21;
+const uint8_t PIN_ECHO_TRASERO = 48;
 
 // MPU6050 en un bus I2C distinto al OLED integrado.
 const uint8_t PIN_MPU_SDA = 41;
@@ -57,21 +59,33 @@ const uint8_t PIN_MPU_SCL = 42;
    ACTUADORES, BOTON Y PUERTOS SERIE
    ========================================================= */
 
-const uint8_t PIN_BUZZER = 48;
+const uint8_t PIN_BUZZER = 47;
 const uint8_t PIN_LUZ_FRONTAL = 39;
 const uint8_t PIN_LUZ_TRASERA = 40;
 const uint8_t PIN_PARQUEO_IZQUIERDO = 1;
 const uint8_t PIN_PARQUEO_DERECHO = 38;
 
-const uint8_t PIN_DHT11 = 33;
-const uint8_t PIN_BOTON_PANICO = 47;
+const uint8_t PIN_DHT11 = 34;
+const uint8_t PIN_BOTON_PANICO = 33;
 
-// UART1 para HC-06. Conectar HC-06 TX -> GPIO19 y HC-06 RX -> GPIO20.
-const uint8_t PIN_BT_RX = 19;
-const uint8_t PIN_BT_TX = 20;
+// UART1 para HC-06. Conectar HC-06 TX -> GPIO20 y HC-06 RX -> GPIO21.
+const uint8_t PIN_BT_RX = 20;
+const uint8_t PIN_BT_TX = 21;
 
 // UART2 para GY-GPS6MV2 en modo de solo lectura.
-const uint8_t PIN_GPS_RX = 34; // GPS TX -> Heltec GPIO34.
+const uint8_t PIN_GPS_RX = 35; // GPS TX -> Heltec GPIO35.
+
+// Divisor para el paquete 3S Li-ion: R1 = 330 kΩ, R2 = 100 kΩ.
+// El nodo medio del divisor se conecta a GPIO19. A 12,6 V el ADC recibe
+// aproximadamente 2,93 V, dentro del rango configurado con ADC_11db.
+const uint8_t PIN_BATERIA = 19;
+const float RESISTENCIA_SUPERIOR_BATERIA = 330000.0f;
+const float RESISTENCIA_INFERIOR_BATERIA = 100000.0f;
+const float FACTOR_DIVISOR_BATERIA =
+  (RESISTENCIA_SUPERIOR_BATERIA + RESISTENCIA_INFERIOR_BATERIA) /
+  RESISTENCIA_INFERIOR_BATERIA;
+const uint8_t CELDAS_BATERIA = 3;
+const uint8_t MUESTRAS_BATERIA = 20;
 
 
 /* =========================================================
@@ -144,7 +158,7 @@ uint8_t confirmedNbTrials = 4;
 
    Uplink FPort 10:
      tipo 0x02: ACK administrativo existente (8 bytes)
-     tipo 0x03: telemetria vehicular con GPS y DHT11 (41 bytes)
+     tipo 0x03: telemetria vehicular con GPS, DHT11 y bateria 3S (42 bytes)
 
    Downlink FPort 11:
      01 10 txId intervalo_s(4)  -> cambiar intervalo
@@ -364,13 +378,60 @@ bool esIntervaloValido(uint32_t intervaloSegundos)
          intervaloSegundos <= INTERVALO_MAXIMO;
 }
 
-// La nueva PCB usa GPIO1 para una de las luces de parqueo. Ese GPIO coincide
-// con la entrada ADC de bateria de la Heltec V3 y no puede cumplir ambas
-// funciones simultaneamente. Se conserva el campo del protocolo con 0 mV
-// para indicar que esta medicion no esta disponible en esta PCB.
-uint16_t leerBateriaMv()
+struct MedicionBateria
 {
-  return 0;
+  uint16_t milivoltios;
+  uint8_t porcentaje;
+};
+
+uint8_t calcularPorcentajeCelda(float voltajeCelda)
+{
+  if (voltajeCelda >= 4.20f)
+  {
+    return 100;
+  }
+  if (voltajeCelda <= 3.30f)
+  {
+    return 0;
+  }
+  if (voltajeCelda >= 4.00f)
+  {
+    return (uint8_t)(80.0f + (voltajeCelda - 4.00f) * 100.0f);
+  }
+  if (voltajeCelda >= 3.85f)
+  {
+    return (uint8_t)(60.0f + (voltajeCelda - 3.85f) * 133.33f);
+  }
+  if (voltajeCelda >= 3.70f)
+  {
+    return (uint8_t)(40.0f + (voltajeCelda - 3.70f) * 133.33f);
+  }
+  if (voltajeCelda >= 3.50f)
+  {
+    return (uint8_t)(20.0f + (voltajeCelda - 3.50f) * 100.0f);
+  }
+  return (uint8_t)((voltajeCelda - 3.30f) * 100.0f);
+}
+
+MedicionBateria leerBateria()
+{
+  uint32_t sumaMilivoltios = 0;
+  for (uint8_t muestra = 0; muestra < MUESTRAS_BATERIA; muestra++)
+  {
+    sumaMilivoltios += analogReadMilliVolts(PIN_BATERIA);
+    delay(5);
+  }
+
+  const float voltajeAdc =
+    (sumaMilivoltios / (float)MUESTRAS_BATERIA) / 1000.0f;
+  const float voltajePaquete = voltajeAdc * FACTOR_DIVISOR_BATERIA;
+  const float voltajeCelda = voltajePaquete / CELDAS_BATERIA;
+  const long milivoltios = lroundf(voltajePaquete * 1000.0f);
+
+  MedicionBateria medicion;
+  medicion.milivoltios = (uint16_t)constrain(milivoltios, 0L, 65535L);
+  medicion.porcentaje = calcularPorcentajeCelda(voltajeCelda);
+  return medicion;
 }
 
 void cargarConfiguracion()
@@ -1800,9 +1861,10 @@ void prepararTelemetria()
   }
   appData[20] = checksum;
 
-  // Campos administrativos: intervalo en segundos y bateria en milivoltios.
+  // Campos administrativos: intervalo, voltaje y porcentaje de bateria 3S.
+  const MedicionBateria bateria = leerBateria();
   escribirUint32BE(&appData[21], appTxDutyCycle / 1000UL);
-  escribirUint16BE(&appData[25], leerBateriaMv());
+  escribirUint16BE(&appData[25], bateria.milivoltios);
 
   // Posicion GPS en grados decimales multiplicados por 10^7. Si no existe una
   // posicion valida se envian ceros y el bit GPS de la cabecera permanece en 0.
@@ -1839,7 +1901,8 @@ void prepararTelemetria()
     checksumDht ^= appData[posicion];
   }
   appData[40] = checksumDht;
-  appDataSize = 41;
+  appData[41] = bateria.porcentaje;
+  appDataSize = 42;
 }
 
 void prepararEnvio()
@@ -2074,6 +2137,9 @@ void setup()
   pinMode(PIN_PARQUEO_DERECHO, OUTPUT);
   pinMode(PIN_BOTON_PANICO, INPUT_PULLUP);
 
+  analogReadResolution(12);
+  analogSetPinAttenuation(PIN_BATERIA, ADC_11db);
+
   detenerMotoresInmediato();
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(PIN_LUZ_FRONTAL, LOW);
@@ -2089,8 +2155,7 @@ void setup()
   }
 
   bluetooth.begin(9600, SERIAL_8N1, PIN_BT_RX, PIN_BT_TX);
-  // TX se establece en -1 porque la Heltec no configura el GPS. Esto deja
-  // libre GPIO35, que también controla el LED blanco incorporado.
+  // El GPS solo transmite hacia la Heltec; no se requiere su pin RX.
   gps.begin(9600, SERIAL_8N1, PIN_GPS_RX, -1);
   mpuDisponible = iniciarMpu6050();
   if (mpuDisponible)
@@ -2152,8 +2217,9 @@ void setup()
   {
     Serial.printf(" MPU6050: NO DISPONIBLE\r\n");
   }
-  Serial.println(" GPS GY-GPS6MV2: TX del GPS -> GPIO34, 9600 baudios");
-  Serial.println(" DHT11: GPIO33 | Boton de panico: GPIO47");
+  Serial.println(" GPS GY-GPS6MV2: TX del GPS -> GPIO35, 9600 baudios");
+  Serial.println(" DHT11: GPIO34 | Boton de panico: GPIO33");
+  Serial.println(" Bateria 3S: divisor 330k/100k -> GPIO19");
   Serial.println("========================================");
 }
 
