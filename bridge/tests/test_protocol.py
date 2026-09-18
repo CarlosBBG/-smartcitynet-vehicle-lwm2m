@@ -88,12 +88,27 @@ class ProtocolTests(unittest.TestCase):
             dht_checksum ^= value
 
         message = decode_uplink(
-            legacy + coordinates + bytes([gps_checksum]) + environment + bytes([dht_checksum])
+            legacy
+            + coordinates
+            + bytes([gps_checksum])
+            + environment
+            + bytes([dht_checksum, 74])
         )
 
         self.assertTrue(message.dht_available)
         self.assertAlmostEqual(message.ambient_temperature_c, 23.4)
         self.assertAlmostEqual(message.ambient_humidity_percent, 61.7)
+        self.assertEqual(message.battery_percent, 74)
+
+    def test_decode_vehicle_telemetry_without_reported_battery_percent(self):
+        payload = bytes.fromhex(
+            "01 03 07 09 00 01 32 002A 0037 007B FFCE 00F5 01 82 05 17 0000001E 2E8C"
+        )
+
+        message = decode_uplink(payload)
+
+        self.assertEqual(message.battery_mv, 11916)
+        self.assertEqual(message.battery_percent, 76)
 
     def test_decode_vehicle_directional_indicators(self):
         payload = bytearray.fromhex(

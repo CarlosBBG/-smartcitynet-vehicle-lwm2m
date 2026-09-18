@@ -64,6 +64,24 @@ EVENT_NAMES = {
 }
 
 
+def estimate_battery_percent_3s(battery_mv: int) -> int:
+    """Estimación de reserva para telemetría antigua sin porcentaje explícito."""
+    voltage_per_cell = battery_mv / 1000.0 / 3.0
+    if voltage_per_cell >= 4.20:
+        return 100
+    if voltage_per_cell <= 3.30:
+        return 0
+    if voltage_per_cell >= 4.00:
+        return int(80.0 + (voltage_per_cell - 4.00) * 100.0)
+    if voltage_per_cell >= 3.85:
+        return int(60.0 + (voltage_per_cell - 3.85) * 133.33)
+    if voltage_per_cell >= 3.70:
+        return int(40.0 + (voltage_per_cell - 3.70) * 133.33)
+    if voltage_per_cell >= 3.50:
+        return int(20.0 + (voltage_per_cell - 3.50) * 100.0)
+    return int((voltage_per_cell - 3.30) * 100.0)
+
+
 class ProtocolError(ValueError):
     """El payload no pertenece al protocolo SmartCityNet o esta incompleto."""
 
@@ -83,8 +101,7 @@ class Telemetry:
 
     @property
     def battery_percent(self) -> int:
-        # Aproximacion inicial para LiPo 1S; se calibrara con mediciones reales.
-        return max(0, min(100, round((self.battery_mv - 3300) * 100 / 900)))
+        return estimate_battery_percent_3s(self.battery_mv)
 
     def to_dict(self) -> dict:
         result = asdict(self)
@@ -131,6 +148,7 @@ class VehicleTelemetry:
     longitude: float | None = None
     ambient_temperature_c: float | None = None
     ambient_humidity_percent: float | None = None
+    reported_battery_percent: int | None = None
 
     @property
     def command_status_name(self) -> str:
@@ -165,7 +183,9 @@ class VehicleTelemetry:
 
     @property
     def battery_percent(self) -> int:
-        return max(0, min(100, round((self.battery_mv - 3300) * 100 / 900)))
+        if self.reported_battery_percent is not None:
+            return self.reported_battery_percent
+        return estimate_battery_percent_3s(self.battery_mv)
 
     @property
     def remote_alert_active(self) -> bool:
@@ -265,8 +285,8 @@ def decode_uplink(payload: bytes) -> Uplink:
         return CommandAck(tx_id, status, interval)
 
     if message_type == MSG_VEHICLE_TELEMETRY:
-        if len(payload) not in (27, 36, 41):
-            raise ProtocolError("telemetria vehicular debe contener 27, 36 o 41 bytes")
+        if len(payload) not in (27, 36, 41, 42):
+            raise ProtocolError("telemetria vehicular debe contener 27, 36, 41 o 42 bytes")
         checksum = 0
         for value in payload[5:20]:
             checksum ^= value
@@ -312,7 +332,7 @@ def decode_uplink(payload: bytes) -> Uplink:
 
         ambient_temperature = None
         ambient_humidity = None
-        if len(payload) == 41:
+        if len(payload) >= 41:
             dht_checksum = 0
             for value in payload[36:40]:
                 dht_checksum ^= value
@@ -327,6 +347,12 @@ def decode_uplink(payload: bytes) -> Uplink:
                     raise ProtocolError("humedad DHT fuera de rango")
                 ambient_temperature = temperature_raw / 10.0
                 ambient_humidity = humidity_raw / 10.0
+
+        reported_battery_percent = None
+        if len(payload) == 42:
+            reported_battery_percent = payload[41]
+            if reported_battery_percent > 100:
+                raise ProtocolError("porcentaje de bateria fuera de rango")
 
         return VehicleTelemetry(
             flags=flags,
@@ -348,6 +374,7 @@ def decode_uplink(payload: bytes) -> Uplink:
             longitude=longitude,
             ambient_temperature_c=ambient_temperature,
             ambient_humidity_percent=ambient_humidity,
+            reported_battery_percent=reported_battery_percent,
         )
 
     raise ProtocolError(f"tipo de uplink no soportado: 0x{message_type:02x}")
