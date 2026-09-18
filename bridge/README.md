@@ -98,7 +98,7 @@ Todos los enteros multibyte usan orden de red (*big-endian*).
 |---|---:|---:|---|
 | Uplink | 10 | `0x01` | versión, tipo, flags, último txId/estado, contador, intervalo, batería mV |
 | Uplink | 10 | `0x02` | versión, tipo, txId, estado, intervalo aplicado |
-| Uplink | 10 | `0x03` | telemetría vehicular; 41 bytes con GPS y DHT11, compatible con 27 y 36 bytes |
+| Uplink | 10 | `0x03` | telemetría vehicular; 42 bytes con GPS, DHT11 y porcentaje de batería 3S, compatible con 27, 36 y 41 bytes |
 | Downlink | 11 | `0x10` | versión, comando, txId, nuevo intervalo en segundos |
 | Downlink | 11 | `0x11` | versión, comando, txId, alerta remota 0/1 |
 | Downlink | 11 | `0x12` | versión, comando, txId, luz 0..4, estado 0/1 |

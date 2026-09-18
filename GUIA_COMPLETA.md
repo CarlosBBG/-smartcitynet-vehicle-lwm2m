@@ -217,9 +217,9 @@ modo local puede utilizar los valores en cero de `credentials.example.h`.
 - El OLED debe alternar la conducción con GPS y DHT11. La posición GPS, la
   temperatura ambiente y la humedad se envían a TTN y deben aparecer en Leshan
   y Node-RED.
-- El GY-GPS6MV2 trabaja a 9600 baudios: TX del GPS va a GPIO34 y su entrada RX
-  queda sin conectar. GPIO35 permanece libre para no activar el LED integrado.
-- Una pulsación del botón en GPIO47 debe detener y bloquear los motores,
+- El GY-GPS6MV2 trabaja a 9600 baudios: TX del GPS va a GPIO35 y su entrada RX
+  queda sin conectar.
+- Una pulsación del botón en GPIO33 debe detener y bloquear los motores,
   programar un uplink prioritario y mostrar la alerta en Leshan y Node-RED; una
   segunda pulsación debe liberar el bloqueo sin reanudar el movimiento.
 - Con un objeto a menos de 30 cm, el sensor frontal debe impedir únicamente el
@@ -233,8 +233,9 @@ modo local puede utilizar los valores en cero de `credentials.example.h`.
 - Los motores pueden tener fuente independiente, pero todas las tierras deben
   compartir GND.
 
-GPIO1 se emplea para una luz de parqueo en este montaje, por lo que la versión 1
-no ofrece una medición fiable de batería y puede reportar `0 mV`.
+GPIO19 recibe el punto medio de un divisor de 330 kΩ / 100 kΩ conectado a tres
+celdas Li-ion en serie. El firmware calcula el voltaje del paquete y el
+porcentaje por celda; ambos se transmiten para Leshan y Node-RED.
 
 ## 7. Instalar los servicios locales
 
@@ -397,15 +398,16 @@ Todos los enteros multibyte usan *big-endian*.
 |---|---:|---:|---:|---|
 | Uplink | 10 | `0x01` | 15 B | Telemetría administrativa heredada |
 | Uplink | 10 | `0x02` | 8 B | ACK de comando |
-| Uplink | 10 | `0x03` | 27, 36 o 41 B | Telemetría vehicular; extensiones GPS y DHT11 |
+| Uplink | 10 | `0x03` | 27, 36, 41 o 42 B | Telemetría vehicular; extensiones GPS, DHT11 y porcentaje de batería 3S |
 | Downlink | 11 | `0x10` | 7 B | Cambiar intervalo |
 | Downlink | 11 | `0x11` | 4 B | Activar/desactivar alerta |
 | Downlink | 11 | `0x12` | 5 B | Controlar una luz |
 
-La trama vehicular de 41 bytes incluye movimiento, velocidad, distancias,
+La trama vehicular actual de 42 bytes incluye movimiento, velocidad, distancias,
 pitch, roll, temperatura del MPU6050, flags, contador, intervalo, batería,
-resultado del último comando, GPS, temperatura ambiente y humedad. El Bridge
-conserva compatibilidad con las tramas anteriores de 27 y 36 bytes. Los IDs de
+resultado del último comando, GPS, temperatura ambiente, humedad y porcentaje
+calculado por la Heltec para un paquete 3S. El Bridge conserva compatibilidad
+con las tramas anteriores de 27, 36 y 41 bytes. Los IDs de
 luz son `0=frontal`, `1=trasera`, `2=parqueo`, `3=direccional izquierda` y
 `4=direccional derecha`.
 
