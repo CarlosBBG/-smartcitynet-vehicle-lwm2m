@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  VIEWER
+}
+
+enum VehicleStatus {
+  PENDING_DISCOVERY
+  ONLINE
+  OFFLINE
+  LWM2M_DISCONNECTED
+  ERROR
+  DISABLED
+}
+
+enum OperationStatus {
+  requested
+  published
+  ttn_queued
+  ttn_sent
+  lorawan_acknowledged
+  acknowledged
+  rejected
+  timed_out
+  ttn_failed
+  publish_failed
+}
+
+enum AlertType {
+  LOCAL_PANIC
+  LOW_BATTERY
+  VEHICLE_OFFLINE
+  LWM2M_DISCONNECTED
+  SYSTEM
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model User {
+  id                 String   @id @default(uuid()) @db.Uuid
+  email              String   @unique
+  passwordHash       String
+  name               String
+  role               Role     @default(VIEWER)
+  enabled            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  acknowledgedAlerts Alert[]  @relation("AlertAcknowledgedBy")
+
+  @@index([role])
+  @@index([enabled])
+}
+
+model Vehicle {
+  id                String        @id @default(uuid()) @db.Uuid
+  name              String
+  deviceId          String        @unique
+  devEui            String?       @unique
+  lwm2mEndpoint     String        @unique
+  model             String
+  description       String?
+  enabled           Boolean       @default(true)
+  status            VehicleStatus @default(PENDING_DISCOVERY)
+  lastSeen          DateTime?
+  lastUplinkCounter Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+  telemetry         Telemetry[]
+  operations        Operation[]
+  alerts            Alert[]
+
+  @@index([status])
+  @@index([enabled, deletedAt])
+  @@index([lastSeen])
+}
+
+model Telemetry {
+  id                          String   @id @default(uuid()) @db.Uuid
+  vehicleId                   String   @db.Uuid
+  receivedAt                  DateTime
+  uplinkCounter               Int?
+  transmissionIntervalSeconds Int?
+  batteryMv                   Int?
+  batteryPercent              Int?
+  rssi                        Int?
+  snr                         Float?
+  movement                    String?
+  speedPercent                Int?
+  frontDistanceCm             Int?
+  rearDistanceCm              Int?
+  pitchDegrees                Float?
+  rollDegrees                 Float?
+  temperatureC                Float?
+  latitude                    Float?
+  longitude                   Float?
+  gpsAvailable                Boolean  @default(false)
+  ambientTemperatureC         Float?
+  ambientHumidityPercent      Float?
+  dhtAvailable                Boolean  @default(false)
+  localPanicActive            Boolean  @default(false)
+  remoteAlertActive           Boolean  @default(false)
+  rawState                    Json
+  createdAt                   DateTime @default(now())
+  vehicle                     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  @@index([vehicleId])
+  @@index([receivedAt])
+  @@index([vehicleId, receivedAt])
+  @@index([vehicleId, uplinkCounter])
+}
+
+model Operation {
+  id             String          @id @default(uuid()) @db.Uuid
+  bridgeKey      String?         @unique
+  vehicleId      String          @db.Uuid
+  transactionId  Int
+  resourcePath   String
+  requestedValue Json
+  status         OperationStatus @default(requested)
+  commandStatus  Int?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  @@index([vehicleId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([vehicleId, transactionId, createdAt])
+}
+
+model Alert {
+  id               String        @id @default(uuid()) @db.Uuid
+  ruleKey          String?       @unique
+  vehicleId        String?       @db.Uuid
+  type             AlertType
+  severity         AlertSeverity
+  title            String
+  message          String
+  active           Boolean       @default(true)
+  acknowledged     Boolean       @default(false)
+  acknowledgedBy   String?       @db.Uuid
+  acknowledgedAt   DateTime?
+  createdAt        DateTime      @default(now())
+  resolvedAt       DateTime?
+  metadata         Json?
+  vehicle          Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  acknowledgedUser User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId])
+  @@index([active, severity])
+  @@index([createdAt])
+}
