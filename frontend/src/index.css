@@ -1,0 +1,44 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #f4f6f8;
+  color: #171927;
+  font-family: "Ubuntu", "DejaVu Sans", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.mono {
+  font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #eef2f4;
+  font-family: "Ubuntu", "DejaVu Sans", Arial, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
