@@ -243,6 +243,36 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(second["transaction_id"], 2)
         self.assertEqual(len(self.bridge.mqtt.calls), 2)
 
+    def test_pending_operation_is_isolated_per_vehicle(self):
+        binary = bytes.fromhex("01 01 01 00 00 00000001 0000001E 0E74")
+        for device_id, dev_eui in (
+            ("vehiculo-a", "70B3D57ED000000A"),
+            ("vehiculo-b", "70B3D57ED000000B"),
+        ):
+            event = {
+                "end_device_ids": {"device_id": device_id, "dev_eui": dev_eui},
+                "received_at": "2026-09-22T12:00:00Z",
+                "uplink_message": {
+                    "f_port": 10,
+                    "frm_payload": base64.b64encode(binary).decode(),
+                    "rx_metadata": [],
+                },
+            }
+            self.bridge.handle_uplink(json.dumps(event).encode())
+
+        operation_a = self.bridge.set_remote_alert("vehiculo-a", True)
+        operation_b = self.bridge.set_vehicle_light("vehiculo-b", "front", True)
+
+        self.assertEqual(operation_a["transaction_id"], 1)
+        self.assertEqual(operation_b["transaction_id"], 1)
+        self.assertEqual(len(self.bridge.store.list_devices()), 2)
+        self.assertEqual(len(self.bridge.store.list_operations()), 2)
+        self.assertIn("/devices/vehiculo-a/down/replace", self.bridge.mqtt.calls[0][0])
+        self.assertIn("/devices/vehiculo-b/down/replace", self.bridge.mqtt.calls[1][0])
+
+        with self.assertRaises(PendingOperationError):
+            self.bridge.set_vehicle_light("vehiculo-a", "rear", True)
+
     def test_stale_pending_command_times_out_and_releases_next_command(self):
         binary = bytes.fromhex("01 01 01 00 00 00000001 0000001E 0E74")
         event = {

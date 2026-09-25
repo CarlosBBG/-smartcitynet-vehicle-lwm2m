@@ -1,7 +1,8 @@
 # Integración con Eclipse Leshan
 
-Esta fase implementa un cliente LwM2M virtual para representar en Eclipse
-Leshan el nodo LoRaWAN `heltec-labredes`.
+Esta integración representa en Eclipse Leshan los nodos LoRaWAN conocidos por
+el Bridge. SmartCityNet V2 incorpora un manager capaz de mantener varios
+clientes LwM2M dentro de un único proceso.
 
 La Heltec no transporta CoAP. El cliente virtual consulta el *device twin* del
 Bridge y adapta las operaciones LwM2M a su API HTTP:
@@ -15,14 +16,20 @@ Leshan Server <--LwM2M/CoAP--> cliente virtual <--HTTP--> Bridge <--MQTT--> TTN
 - Eclipse Leshan `2.0.0-M18`.
 - Servidor demo local en `http://127.0.0.1:8080` y
   `coap://127.0.0.1:5683`.
-- Cliente virtual Java con endpoint `smartcitynet-heltec-labredes`.
+- Una instancia `VirtualClientInstance` aislada por vehículo.
+- Manager local en `http://127.0.0.1:8090`.
 - Objeto Device estándar `/3/0`.
 - Objeto provisional SmartCityNet `/32769/0`, definido en
   [`models/32769.xml`](models/32769.xml).
 
 Se requiere un JDK 17. Indique su ubicación mediante la variable
 `SMARTCITYNET_JAVA_HOME` si no coincide con la ruta predeterminada de los
-scripts.
+scripts (`/home/lcd/.local/share/smartcitynet/jdk-17`). La variable debe
+apuntar a la carpeta que contiene `bin/java` y `bin/javac`:
+
+```bash
+export SMARTCITYNET_JAVA_HOME=/ruta/a/jdk-17
+```
 
 ## Arranque
 
@@ -44,12 +51,48 @@ cd leshan
 ./run-server.sh
 ```
 
-Y en una tercera terminal se registra el cliente virtual:
+Y en una tercera terminal se inicia una sola vez el manager:
 
 ```bash
 cd leshan
-./run-virtual-client.sh
+./run-virtual-client-manager.sh
 ```
+
+El manager no crea clientes arbitrariamente al arrancar. SmartCityNet V2 los
+aprovisionará mediante su API interna cuando el Bridge descubra cada vehículo.
+Durante una prueba manual pueden crearse así:
+
+```bash
+curl -X POST http://127.0.0.1:8090/clients \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId":"heltec-labredes",
+    "endpoint":"smartcitynet-heltec-labredes"
+  }'
+```
+
+La respuesta `201` indica que se creó y registró el cliente. Repetir el mismo
+body es idempotente: devuelve `200` y la instancia existente. Si el Bridge no
+conoce el dispositivo devuelve `404 DEVICE_NOT_DISCOVERED`.
+
+API local disponible:
+
+```text
+GET    /health
+GET    /clients
+POST   /clients
+DELETE /clients/{endpoint}
+```
+
+Para detener solo la representación LwM2M, sin borrar vehículo ni históricos:
+
+```bash
+curl -X DELETE \
+  http://127.0.0.1:8090/clients/smartcitynet-heltec-labredes
+```
+
+`run-virtual-client.sh` se conserva como modo compatible de un solo vehículo.
+No lo ejecute para un endpoint que ya administra el manager.
 
 La interfaz queda disponible en <http://127.0.0.1:8080>. La compilación manual
 del cliente puede comprobarse con:
@@ -69,9 +112,25 @@ curl \
   http://127.0.0.1:8080/api/clients/smartcitynet-heltec-labredes/32769/0
 ```
 
-El cliente consulta el Bridge cada dos segundos. Cuando cambia el *device
+Cada instancia consulta el Bridge cada dos segundos. Cuando cambia su *device
 twin*, llama a `fireResourceChange`, permitiendo que las relaciones
 Observe/Notify de Leshan reciban el cambio sin generar una consulta LoRaWAN.
+
+El manager mantiene una instancia por endpoint. Dos vehículos pueden aparecer
+simultáneamente en `GET /clients` con `state=RUNNING` y `registered=true`; el
+script `../scripts/verify-multi-vehicle.sh` contrasta esos clientes con Bridge,
+PostgreSQL y los registros efectivos del servidor Leshan.
+
+## Configuración del manager
+
+| Variable | Predeterminado | Uso |
+|---|---|---|
+| `BRIDGE_API_URL` | `http://127.0.0.1:8081` | API de lectura y comandos del Bridge |
+| `LESHAN_SERVER_URL` | `coap://127.0.0.1:5683` | servidor LwM2M |
+| `LWM2M_MANAGER_HOST` | `127.0.0.1` | interfaz HTTP local |
+| `LWM2M_MANAGER_PORT` | `8090` | puerto HTTP local |
+| `LWM2M_REGISTRATION_GRACE_MS` | `15000` | espera máxima del registro Leshan |
+| `LESHAN_MODELS_DIR` | ruta absoluta a `leshan/models` | modelos XML adicionales |
 
 ## Escritura del intervalo
 

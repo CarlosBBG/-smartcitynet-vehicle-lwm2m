@@ -1,5 +1,14 @@
 # Guía completa de SmartCityNet — versión 1
 
+> Esta guía conserva el procedimiento reproducible de SmartCityNet V1. El
+> arranque actual de SmartCityNet V2 se encuentra en el
+> [`README.md`](README.md), con detalles en
+> [`backend/README.md`](backend/README.md) y
+> [`frontend/README.md`](frontend/README.md), además de
+> [`leshan/README.md`](leshan/README.md). Se conservan Bridge, Leshan, firmware
+> y Node-RED de la V1. Node-RED es opcional
+> para V2 y este documento solo describe la instalación histórica de V1.
+
 Esta guía documenta la primera versión reproducible del prototipo SmartCityNet:
 firmware del vehículo, conexión LoRaWAN con The Things Network (TTN), Bridge de
 adaptación, representación LwM2M en Eclipse Leshan y dashboard Node-RED.
