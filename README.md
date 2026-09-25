@@ -12,9 +12,59 @@ El dashboard y los flujos de V1 se conservan como referencia histórica en
 ## Arquitectura
 
 ```text
-Telemetría: Heltec → TTN → Bridge → NestJS/PostgreSQL → React
-Comandos:   React → NestJS → Leshan → cliente virtual → Bridge → TTN → Heltec
-ACK físico: Heltec → TTN → Bridge → NestJS/PostgreSQL → React
+                        SMARTCITYNET V2
+
+            ┌─────────────────────────────┐
+            │      React + Vite + TS      │
+            │                             │
+            │ Dashboard                   │
+            │ Vehículos                   │
+            │ Mapa                        │
+            │ Telemetría                  │
+            │ Alertas                     │
+            │ Administración LwM2M        │
+            │ Usuarios                    │
+            └──────────────┬──────────────┘
+                           │
+                    REST + WebSocket
+                           │
+            ┌──────────────▼──────────────┐
+            │        NestJS + TS          │
+            │                             │
+            │ Auth                        │
+            │ Users                       │
+            │ Vehicles                    │
+            │ Telemetry                   │
+            │ Operations                  │
+            │ Alerts                      │
+            │ Bridge Service              │
+            │ Leshan Service              │
+            │ LwM2M Manager Service       │
+            │ Realtime Gateway            │
+            └─────────┬──────────┬────────┘
+                      │          │
+               PostgreSQL       │ HTTP
+                                 │
+                     ┌───────────┼───────────────┐
+                     │           │               │
+                     ▼           ▼               ▼
+                Bridge       Eclipse      Virtual Client
+                Python       Leshan       Manager Java
+                   │                           │
+                   │ HTTP                      │ LwM2M
+                   │                           ▼
+                   │                     Eclipse Leshan
+                   │
+                   │ MQTT/TLS
+                   ▼
+                  TTN
+                   │
+                LoRaWAN
+                   │
+                Gateway
+                   │
+                   ▼
+                Heltec
 ```
 
 La Heltec usa un protocolo binario compacto: uplinks por `FPort 10` y comandos
