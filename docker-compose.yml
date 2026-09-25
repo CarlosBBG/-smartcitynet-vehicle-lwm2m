@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartcitynet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartcitynet
+      POSTGRES_USER: smartcitynet
+      POSTGRES_PASSWORD: smartcitynet
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - smartcitynet-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartcitynet -d smartcitynet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  smartcitynet-postgres-data:
