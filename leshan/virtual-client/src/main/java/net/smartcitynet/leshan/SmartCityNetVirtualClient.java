@@ -50,9 +50,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * LwM2M/CoAP y la API HTTP que termina generando downlinks LoRaWAN.
  */
 public final class SmartCityNetVirtualClient {
-    private static final int OBJECT_SMARTCITYNET = 32769;
-    private static final int SERVER_ID = 123;
-    private static final long REGISTRATION_LIFETIME_SECONDS = 300;
+    static final int OBJECT_SMARTCITYNET = 32769;
+    static final int SERVER_ID = 123;
+    static final long REGISTRATION_LIFETIME_SECONDS = 300;
 
     private SmartCityNetVirtualClient() {
     }
@@ -63,46 +63,17 @@ public final class SmartCityNetVirtualClient {
         String deviceId = env("DEVICE_ID", "heltec-labredes");
         String endpoint = env("LESHAN_ENDPOINT", "smartcitynet-" + deviceId);
         File modelsDirectory = new File(env("LESHAN_MODELS_DIR", "models"));
-
-        BridgeApi bridge = new BridgeApi(bridgeApi, deviceId);
-        SmartCityNetManagement management = new SmartCityNetManagement(bridge);
-
-        List<ObjectModel> models = new ArrayList<>(ObjectLoader.loadAllDefault());
-        models.addAll(ObjectLoader.loadObjectsFromDir(modelsDirectory, true));
-        LwM2mModelRepository repository = new LwM2mModelRepository(models);
-        ObjectsInitializer initializer = new ObjectsInitializer(repository.getLwM2mModel());
-
-        initializer.setInstancesForObject(0, noSec(serverUri, SERVER_ID));
-        initializer.setInstancesForObject(
-                1,
-                new Server(
-                        SERVER_ID,
-                        REGISTRATION_LIFETIME_SECONDS,
-                        EnumSet.of(BindingMode.U),
-                        false,
-                        BindingMode.U));
-        initializer.setInstancesForObject(
-                3,
-                new Device("SmartCityNet", "Heltec WiFi LoRa 32 V3", bridge.devEui()));
-        // El objeto es de instancia única. La factory solo satisface el contrato
-        // de ObjectsInitializer; Leshan no emitirá Create sobre este objeto.
-        initializer.setFactoryForObject(OBJECT_SMARTCITYNET, (model, id, usedIds) -> management);
-        initializer.setInstancesForObject(OBJECT_SMARTCITYNET, management);
-
-        List<LwM2mObjectEnabler> objects = initializer.createAll();
-        CaliforniumClientEndpointsProvider endpoints =
-                new CaliforniumClientEndpointsProvider.Builder().build();
-        LeshanClient client = new LeshanClientBuilder(endpoint)
-                .setObjects(objects)
-                .setEndpointsProviders(endpoints)
-                .build();
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            management.destroy();
-            client.destroy(true);
-        }, "smartcitynet-shutdown"));
-
-        client.start();
+        long registrationTimeout = Long.parseLong(env("LWM2M_REGISTRATION_GRACE_MS", "15000"));
+        VirtualClientInstance instance = new VirtualClientInstance(
+                deviceId,
+                endpoint,
+                bridgeApi,
+                serverUri,
+                modelsDirectory,
+                Duration.ofMillis(registrationTimeout));
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(instance::destroy, "smartcitynet-shutdown"));
+        instance.start();
         System.out.printf(
                 "Cliente LwM2M virtual iniciado: endpoint=%s servidor=%s bridge=%s%n",
                 endpoint,
@@ -111,12 +82,12 @@ public final class SmartCityNetVirtualClient {
         new CountDownLatch(1).await();
     }
 
-    private static String env(String name, String fallback) {
+    static String env(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    private record Snapshot(
+    static record Snapshot(
             long transmissionInterval,
             long uplinkCounter,
             long batteryMv,
@@ -154,7 +125,7 @@ public final class SmartCityNetVirtualClient {
             boolean dhtAvailable) {
     }
 
-    private static final class BridgeApi {
+    static final class BridgeApi {
         private static final ObjectMapper JSON = new ObjectMapper();
 
         private final HttpClient http = HttpClient.newBuilder()
@@ -281,14 +252,16 @@ public final class SmartCityNetVirtualClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new IllegalStateException(
+                throw new BridgeRequestException(
+                        response.statusCode(),
                         "Bridge no disponible: HTTP " + response.statusCode() + " " + response.body());
             }
             return JSON.readTree(response.body());
         }
     }
 
-    private static final class BridgeRequestException extends Exception {
+    static final class BridgeRequestException extends Exception {
+        private static final long serialVersionUID = 1L;
         private final int statusCode;
 
         BridgeRequestException(int statusCode, String message) {
@@ -301,7 +274,7 @@ public final class SmartCityNetVirtualClient {
         }
     }
 
-    private static final class SmartCityNetManagement extends BaseInstanceEnabler implements Destroyable {
+    static final class SmartCityNetManagement extends BaseInstanceEnabler implements Destroyable {
         private final BridgeApi bridge;
         private final ScheduledExecutorService poller = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "smartcitynet-device-twin-poller");

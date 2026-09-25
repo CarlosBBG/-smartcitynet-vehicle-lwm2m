@@ -15,10 +15,12 @@ if [[ ! -f "$client_jar" ]]; then
     "https://repo1.maven.org/maven2/org/eclipse/leshan/leshan-demo-client/2.0.0-M18/$(basename "$client_jar")"
 fi
 
+mapfile -d '' source_files < <(find "$source_dir" -type f -name '*.java' -print0 | sort -z)
+
 "$java_root/bin/javac" \
   -encoding UTF-8 \
   -cp "$client_jar" \
   -d "$classes_dir" \
-  "$source_dir/net/smartcitynet/leshan/SmartCityNetVirtualClient.java"
+  "${source_files[@]}"
 
-echo "Cliente virtual compilado en $classes_dir"
+echo "Cliente virtual y manager compilados en $classes_dir"
