@@ -1,15 +1,18 @@
-# SmartCityNet LwM2M-LoRaWAN Bridge — fase 1
+# SmartCityNet LwM2M-LoRaWAN Bridge
 
-Este componente implementa el primer corte vertical de la propuesta:
+Este componente adapta los mensajes entre TTN y el cliente LwM2M virtual:
 
 ```text
 Heltec V3 <--LoRaWAN--> TTN <--MQTT/TLS--> Bridge <--HTTP--> cliente virtual <--LwM2M/CoAP--> Eclipse Leshan
 ```
 
-La versión 1 recibe los uplinks de TTN, conserva un *device twin* local y permite
+El Bridge recibe los uplinks de TTN, conserva un *device twin* local y permite
 cambiar el intervalo de transmisión, la alerta remota y las cinco funciones de
 iluminación del vehículo. El Bridge genera el downlink, lo deja en la cola de TTN y registra su
 estado hasta recibir el ACK de la Heltec.
+En V2, los estados, las transacciones y el bloqueo de comandos pendientes se
+separan por `device_id`; NestJS consulta esta API para administrar varios
+vehículos sin utilizar Node-RED.
 
 No se encapsula una trama CoAP completa en LoRaWAN. El protocolo binario pequeño
 es la capa de adaptación; el cliente LwM2M virtual implementado en `../leshan/`
@@ -85,10 +88,15 @@ entonces cambia a `acknowledged` o `rejected`.
 El Bridge publica mediante `down/replace` y usa un downlink no confirmado. Para
 no sustituir una orden que la Heltec todavía debe confirmar, rechaza con HTTP
 `409 Conflict` cualquier escritura nueva mientras la operación más reciente
-esté en `requested`, `published`, `ttn_queued` o `ttn_sent`. Una operación sin
+esté en `requested`, `published`, `ttn_queued`, `ttn_sent` o
+`lorawan_acknowledged`. Una operación sin
 progreso durante 180 segundos cambia a `timed_out` y libera el siguiente
 comando. La confirmación autoritativa es el ACK de aplicación, que incluye el
-identificador de transacción y el valor aplicado.
+identificador de transacción, el código de resultado y el intervalo aplicado.
+
+El bloqueo se calcula por `device_id`: una orden pendiente de un vehículo no
+impide publicar una orden para otro. Tanto el contador de transacción como la
+clave primaria de operaciones quedan aislados por dispositivo.
 
 ## Protocolo binario
 
